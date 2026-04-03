@@ -36,5 +36,6 @@ config :partisan,
   tls: false,
   # Name for this node (will be overridden at runtime)
   name: :"dev@127.0.0.1",
-  # Listen port
+  # Listen port - will be dynamically updated by Application at runtime
+  # with an OS-assigned available port to avoid conflicts
   listen_addrs: [%{ip: {127, 0, 0, 1}, port: 10200}]

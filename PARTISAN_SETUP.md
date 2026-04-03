@@ -147,17 +147,21 @@ services: [
 
 This enables automatic mesh recovery when network conditions change.
 
-## Next Steps
+## Automatic Discovery
 
-### TODO: Automatic mDNS Discovery
+**Automatic peer discovery is now fully implemented!** Nodes will discover and connect to each other automatically via mDNS.
 
-Currently, peers must be connected manually. To implement auto-discovery:
+### How It Works
 
-1. Query `mdns_lite` for `_partisan._tcp.local` services
-2. Parse responses to extract peer IPs and ports
-3. Automatically call `PartisanConfig.join_peer/1`
+1. **MdnsAdvertiser** (`lib/elixir_rpc/mdns_advertiser.ex`) - Advertises this node's Partisan service
+   - Only runs on Nerves targets (not host mode)
+   - Advertises on port 10200 with node metadata
 
-See placeholder in `lib/elixir_rpc/peer_manager.ex:46-48`
+2. **PeerManager** (`lib/elixir_rpc/peer_manager.ex`) - Discovers and connects to peers
+   - Scans every 15 seconds using `NervesDiscovery`
+   - Automatically joins newly discovered peers
+   - Tracks discovered vs connected peers
+   - Triggers discovery when network comes up (VintageNet integration)
 
 ### TODO: Capability Advertisement
 

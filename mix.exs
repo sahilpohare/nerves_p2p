@@ -3,7 +3,21 @@ defmodule ElixirRpc.MixProject do
 
   @app :elixir_rpc
   @version "0.1.0"
-  @all_targets [:bbb, :grisp2, :osd32mp1, :mangopi_mq_pro, :qemu_aarch64, :rpi, :rpi0, :rpi0_2, :rpi2, :rpi3, :rpi4, :rpi5, :x86_64]
+  @all_targets [
+    :bbb,
+    :grisp2,
+    :osd32mp1,
+    :mangopi_mq_pro,
+    :qemu_aarch64,
+    :rpi,
+    :rpi0,
+    :rpi0_2,
+    :rpi2,
+    :rpi3,
+    :rpi4,
+    :rpi5,
+    :x86_64
+  ]
 
   def project do
     [
@@ -14,7 +28,10 @@ defmodule ElixirRpc.MixProject do
       listeners: listeners(Mix.target(), Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      releases: [{@app, release()}]
+      releases: [{@app, release()}],
+      compilers: [:elixir_make] ++ Mix.compilers(),
+      make_targets: ["all"],
+      make_clean: ["clean"]
     ]
   end
 
@@ -38,7 +55,7 @@ defmodule ElixirRpc.MixProject do
       {:shoehorn, "~> 0.9.1"},
       {:ring_logger, "~> 0.11.0"},
       {:toolshed, "~> 0.4.0"},
-
+      {:libp2p_elixir, "~> 0.9.6"},
       # Allow Nerves.Runtime on host to support development, testing and CI.
       # See config/host.exs for usage.
       {:nerves_runtime, "~> 0.13.12"},
@@ -46,6 +63,9 @@ defmodule ElixirRpc.MixProject do
       # Partisan for P2P mesh networking and NAT traversal
       {:partisan, "~> 5.0"},
       {:ex_hash_ring, "~> 6.0"},
+
+      # Build Rust libp2p bridge
+      {:elixir_make, "~> 0.9", runtime: false},
 
       # Dependencies for all targets except :host
       {:nerves_pack, "~> 0.7.1", targets: @all_targets},

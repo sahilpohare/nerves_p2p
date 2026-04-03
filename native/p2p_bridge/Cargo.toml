@@ -1,0 +1,73 @@
+[package]
+name = "p2p_bridge"
+version = "0.1.0"
+edition = "2021"
+
+# Binary crate for running as an external Port process
+[[bin]]
+name = "p2p_bridge"
+path = "src/main.rs"
+
+[dependencies]
+# libp2p core dependencies
+libp2p = { version = "0.55", features = [
+    "autonat",
+    "dcutr",
+    "identify",
+    "kad",
+    "mdns",
+    "noise",
+    "ping",
+    "relay",
+    "tcp",
+    "yamux",
+    "macros",
+    "tokio",
+    "quic"
+] }
+
+# Async runtime
+tokio = { version = "1.42", features = ["full"] }
+futures = "0.3"
+
+# Serialization for Port communication (stdin/stdout)
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Utilities
+hex = "0.4"
+
+# TUI (standalone mode)
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+is-terminal = "0.4"
+chrono = "0.4"
+
+[profile.release]
+lto = true
+opt-level = "z"  # Optimize for size (important for embedded)
+strip = true
+codegen-units = 1
+panic = "abort"
+
+# Cross-compilation targets for Nerves
+# Note: These linker settings are only needed if you have the cross-compilation
+# toolchains installed. Otherwise, use `cross` (cargo install cross) for easier
+# cross-compilation which handles toolchains automatically.
+# Uncomment if you have the toolchains:
+# [target.armv7-unknown-linux-gnueabihf]
+# linker = "arm-linux-gnueabihf-gcc"
+#
+# [target.aarch64-unknown-linux-gnu]
+# linker = "aarch64-linux-gnu-gcc"

@@ -77,6 +77,8 @@ config :mdns_lite,
   ttl: 120,
 
   # Advertise the following services over mDNS.
+  # Note: Partisan service is dynamically advertised by MdnsAdvertiser
+  # with the OS-assigned port from libp2p bridge
   services: [
     %{
       protocol: "ssh",
@@ -92,11 +94,6 @@ config :mdns_lite,
       protocol: "epmd",
       transport: "tcp",
       port: 4369
-    },
-    %{
-      protocol: "partisan",
-      transport: "tcp",
-      port: 10200
     }
   ]
 
@@ -118,7 +115,10 @@ config :partisan,
   max_active_size: 6,
   # Enable TLS for production
   tls: false,
-  # Partisan listen port
+  # Partisan listen port - will be dynamically configured by Application
+  # with OS-assigned port from libp2p bridge to avoid conflicts
+  # Listen port - will be dynamically updated by Application at runtime
+  # with an OS-assigned available port to avoid conflicts
   listen_addrs: [%{ip: {0, 0, 0, 0}, port: 10200}],
   # Parallelism for message processing
   parallelism: 4

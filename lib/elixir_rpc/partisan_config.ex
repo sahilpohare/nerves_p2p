@@ -98,7 +98,7 @@ defmodule ElixirRpc.PartisanConfig do
   This bypasses Distributed Erlang and uses Partisan's overlay network.
   """
   def send_message(peer_name, message) do
-    :partisan_peer_service.forward_message(
+    :partisan_peer_service.message(
       peer_name,
       message,
       []
