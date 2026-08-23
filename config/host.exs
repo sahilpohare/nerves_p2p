@@ -1,6 +1,11 @@
 import Config
 
 # Add configuration that is only needed when running on the host here.
+config :logger, level: :info
+
+# Use the real NIF on host — Rustler compiles p2p_bridge for native dev/test.
+# Set native_module: ElixirRpc.P2P.Native.Mock in a specific test if isolation is needed.
+config :elixir_rpc, native_module: ElixirRpc.P2P.Native.Nif
 
 config :nerves_runtime,
   kv_backend:
@@ -22,20 +27,13 @@ config :nerves_runtime,
 
 # Partisan configuration for development
 config :partisan,
-  # Peer service manager (handles membership)
   peer_service_manager: :partisan_pluggable_peer_service_manager,
-  # Use full mesh topology for development
   partisan_peer_service_manager: :partisan_hyparview_peer_service_manager,
-  # Channels configuration
   channels: [:membership, :rpc, :discovery],
-  # Enable broadcast trees for efficient multicast
   broadcast: true,
-  # Connection backlog
   connection_jitter: 1000,
-  # Disable TLS for local development
   tls: false,
-  # Name for this node (will be overridden at runtime)
-  name: :"dev@127.0.0.1",
-  # Listen port - will be dynamically updated by Application at runtime
-  # with an OS-assigned available port to avoid conflicts
-  listen_addrs: [%{ip: {127, 0, 0, 1}, port: 10200}]
+  name: Node.self(),
+  listen_addrs: [%{ip: {127, 0, 0, 1}, port: 10200}],
+  peer_discovery: true,
+  peer_discovery_strategy: :partisan_mdns_peer_discovery

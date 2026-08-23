@@ -1,0 +1,26 @@
+[package]
+name = "peer_id"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "peer_id"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.35"
+libp2p = { version = "0.55", features = [
+    "autonat",
+    "dcutr",
+    "identify",
+    "kad",
+    "mdns",
+    "noise",
+    "ping",
+    "relay",
+    "tcp",
+    "yamux",
+    "macros",
+    "tokio",
+    "quic",
+] }

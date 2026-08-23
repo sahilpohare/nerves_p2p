@@ -36,65 +36,66 @@ defmodule ElixirRpc.Discovery.DhtProvider do
 
   require Logger
   alias ElixirRpc.Discovery.PeerInfo
+  alias ElixirRpc.DHT
+
+  # Key prefix used for DHT capability records
+  @capability_prefix "cap:"
 
   defmodule State do
     @moduledoc false
     defstruct [
-      :cached_peers,      # Map of peer_id => PeerInfo
+      :node,                # GenServer name/pid of the P2P.Node to use
+      :cached_peers,        # Map of peer_id => PeerInfo
       :cached_capabilities, # Map of capability => [peer_id]
       :last_publish
     ]
   end
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
     Logger.debug("Initializing DHT discovery provider")
+    node = Keyword.get(opts, :node, ElixirRpc.Node)
 
     state = %State{
+      node: node,
       cached_peers: %{},
       cached_capabilities: %{},
       last_publish: nil
     }
-
-    # TODO: Send DHT bootstrap command to libp2p
-    # For now, DHT bootstraps automatically
 
     {:ok, state}
   end
 
   @impl true
   def advertise_self(state, peer_info) do
-    # Build capabilities map for libp2p
-    capabilities_map =
-      Enum.reduce(peer_info.capabilities, %{}, fn cap, acc ->
-        Map.put(acc, to_string(cap), peer_info.metadata[cap] || %{})
+    # Advertise each capability as a DHT provider record.
+    # Key: "cap:<capability_name>" — peers looking for this capability do find_providers on it.
+    results =
+      Enum.map(peer_info.capabilities, fn cap ->
+        key = @capability_prefix <> to_string(cap)
+        DHT.provide(state.node, key)
       end)
 
-    # Send advertise command to libp2p bridge
-    # This will store our capabilities in the DHT
-    case send_advertise_command(capabilities_map) do
-      :ok ->
-        Logger.debug("Advertised self to DHT: #{inspect(capabilities_map)}")
-        {:ok, %{state | last_publish: System.monotonic_time(:millisecond)}}
-
-      {:error, reason} ->
-        Logger.warning("Failed to advertise self to DHT: #{inspect(reason)}")
-        {:error, reason}
+    if Enum.all?(results, &(&1 == :ok)) do
+      Logger.debug("Advertised #{length(peer_info.capabilities)} capabilities to DHT")
+      {:ok, %{state | last_publish: System.monotonic_time(:millisecond)}}
+    else
+      Logger.warning("Some DHT capability advertisements failed")
+      {:ok, %{state | last_publish: System.monotonic_time(:millisecond)}}
     end
   end
 
   @impl true
-  def advertise_capability(state, capability, metadata) do
-    # Advertise a single capability
-    capabilities_map = %{to_string(capability) => metadata}
+  def advertise_capability(state, capability, _metadata) do
+    key = @capability_prefix <> to_string(capability)
 
-    case send_advertise_command(capabilities_map) do
+    case DHT.provide(state.node, key) do
       :ok ->
         Logger.debug("Advertised capability #{capability} to DHT")
         {:ok, state}
 
       {:error, reason} ->
-        Logger.warning("Failed to advertise capability to DHT: #{inspect(reason)}")
+        Logger.warning("Failed to advertise capability #{capability} to DHT: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -104,38 +105,21 @@ defmodule ElixirRpc.Discovery.DhtProvider do
     # Check cache first
     cached_peers = Map.get(state.cached_capabilities, capability, [])
 
-    if Enum.any?(cached_peers) do
-      # Return cached results
-      peers =
-        cached_peers
-        |> Enum.map(&Map.get(state.cached_peers, &1))
-        |> Enum.reject(&is_nil/1)
-        |> Enum.reject(&PeerInfo.stale?(&1, 600))
+    fresh_cached =
+      cached_peers
+      |> Enum.map(&Map.get(state.cached_peers, &1))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.reject(&PeerInfo.stale?(&1, 600))
 
-      {:ok, peers, state}
+    if Enum.any?(fresh_cached) do
+      {:ok, fresh_cached, state}
     else
-      # Query DHT
-      case query_dht_for_capability(capability) do
-        {:ok, peers} ->
-          # Update cache
-          peer_ids = Enum.map(peers, & &1.peer_id)
-          new_cached_caps = Map.put(state.cached_capabilities, capability, peer_ids)
-
-          new_cached_peers =
-            Enum.reduce(peers, state.cached_peers, fn peer, acc ->
-              Map.put(acc, peer.peer_id, peer)
-            end)
-
-          new_state = %{state |
-            cached_capabilities: new_cached_caps,
-            cached_peers: new_cached_peers
-          }
-
-          {:ok, peers, new_state}
-
-        {:error, reason} ->
-          {:error, reason, state}
-      end
+      # Issue async DHT find_providers. Results arrive as dht_query_result events
+      # to registered handlers. For synchronous calls the coordinator falls back
+      # to empty list — callers should subscribe to events for live updates.
+      key = @capability_prefix <> to_string(capability)
+      _ = DHT.find_providers(state.node, key)
+      {:ok, fresh_cached, state}
     end
   end
 
@@ -168,36 +152,4 @@ defmodule ElixirRpc.Discovery.DhtProvider do
     {peers, state}
   end
 
-  ## Private Functions
-
-  defp send_advertise_command(capabilities_map) do
-    command = %{type: "advertise", capabilities: capabilities_map}
-
-    case Jason.encode(command) do
-      {:ok, json} ->
-        Logger.debug("DHT advertise command (needs LibP2pBridge integration): #{json}")
-        :ok
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp query_dht_for_capability(capability) do
-    command = %{
-      type: "query_peers",
-      capabilities: [%{to_string(capability) => %{}}],
-      limit: 10
-    }
-
-    case Jason.encode(command) do
-      {:ok, json} ->
-        Logger.debug("DHT query command (needs Libp2pBridge integration): #{json}")
-        # TODO: Implement actual DHT query via Libp2pBridge
-        {:ok, []}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
 end

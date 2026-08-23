@@ -29,9 +29,7 @@ defmodule ElixirRpc.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: [{@app, release()}],
-      compilers: [:elixir_make] ++ Mix.compilers(),
-      make_targets: ["all"],
-      make_clean: ["clean"]
+      compilers: Mix.compilers()
     ]
   end
 
@@ -63,9 +61,17 @@ defmodule ElixirRpc.MixProject do
       # Partisan for P2P mesh networking and NAT traversal
       {:partisan, "~> 5.0"},
       {:ex_hash_ring, "~> 6.0"},
+      {:delta_crdt, "~> 0.6"},
+      {:horde, path: "../horde"},
 
-      # Build Rust libp2p bridge
-      {:elixir_make, "~> 0.9", runtime: false},
+      # Observability
+      {:telemetry, "~> 1.1"},
+
+      # TUI
+      {:owl, "~> 0.13"},
+
+      # Rust NIF bridge
+      {:rustler, "~> 0.36", runtime: false},
 
       # Dependencies for all targets except :host
       {:nerves_pack, "~> 0.7.1", targets: @all_targets},

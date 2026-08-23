@@ -1,62 +1,33 @@
-use libp2p::{dcutr, identify, kad, mdns, ping, relay};
-use std::time::Duration;
+use libp2p::{
+    autonat, connection_limits, dcutr, gossipsub, identify, kad, mdns,
+    memory_connection_limits, ping, relay, rendezvous, request_response,
+    swarm::{behaviour::toggle::Toggle, NetworkBehaviour},
+    upnp,
+};
 
-/// Main P2P Bridge behavior
-///
-/// This combines essential libp2p behaviors for:
-/// - Peer identification (identify)
-/// - Local network discovery (mDNS)
-/// - NAT traversal via relay (relay_client)
-/// - Direct connection upgrade (dcutr)
-/// - Keepalive / liveness detection (ping)
-#[derive(libp2p::swarm::NetworkBehaviour)]
-pub struct P2PBehaviour {
+#[derive(NetworkBehaviour)]
+pub struct NodeBehaviour {
+    // Infrastructure — always present
+    pub connection_limits: connection_limits::Behaviour,
+    pub memory_limits: memory_connection_limits::Behaviour,
     pub identify: identify::Behaviour,
-    pub mdns: mdns::tokio::Behaviour,
-    pub relay_client: relay::client::Behaviour,
-    pub dcutr: dcutr::Behaviour,
-    pub kad: kad::Behaviour<kad::store::MemoryStore>,
     pub ping: ping::Behaviour,
-}
 
-impl P2PBehaviour {
-    pub fn new(
-        keypair: &libp2p::identity::Keypair,
-        relay_client: relay::client::Behaviour,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let peer_id = keypair.public().to_peer_id();
+    // Application protocols — always present
+    pub gossipsub: gossipsub::Behaviour,
+    pub request_response: request_response::cbor::Behaviour<Vec<u8>, Vec<u8>>,
 
-        let identify = identify::Behaviour::new(identify::Config::new(
-            "/elixir_rpc/0.1.0".to_string(),
-            keypair.public(),
-        ));
+    // Optional protocols — controlled by enable_* flags
+    pub kademlia: Toggle<kad::Behaviour<kad::store::MemoryStore>>,
+    pub mdns: Toggle<mdns::tokio::Behaviour>,
+    pub rendezvous_client: Toggle<rendezvous::client::Behaviour>,
+    pub rendezvous_server: Toggle<rendezvous::server::Behaviour>,
 
-        let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id)?;
-
-        let dcutr = dcutr::Behaviour::new(peer_id);
-
-        let mut kad_config = kad::Config::default();
-        kad_config.set_query_timeout(Duration::from_secs(60));
-        kad_config.set_kbucket_inserts(kad::BucketInserts::OnConnected);
-
-        let kad = kad::Behaviour::with_config(
-            peer_id,
-            kad::store::MemoryStore::new(peer_id),
-            kad_config,
-        );
-
-        // Ping every 15s to keep connections alive and detect dead peers
-        let ping = ping::Behaviour::new(
-            ping::Config::new().with_interval(Duration::from_secs(15)),
-        );
-
-        Ok(Self {
-            identify,
-            mdns,
-            relay_client,
-            dcutr,
-            kad,
-            ping,
-        })
-    }
+    // NAT traversal
+    pub relay_client: relay::client::Behaviour,
+    pub relay_server: Toggle<relay::Behaviour>,
+    pub dcutr: Toggle<dcutr::Behaviour>,
+    pub autonat: Toggle<autonat::Behaviour>,
+    pub autonat_server: Toggle<autonat::v2::server::Behaviour>,
+    pub upnp: Toggle<upnp::tokio::Behaviour>,
 }

@@ -12,7 +12,7 @@ defmodule ElixirRpc.PeerManager do
   use GenServer
   require Logger
 
-  alias ElixirRpc.PartisanConfig
+  alias ElixirRpc.{P2P.Discovery, PartisanConfig}
 
   @discovery_interval 15_000
 
@@ -56,12 +56,15 @@ defmodule ElixirRpc.PeerManager do
   def init(_opts) do
     Logger.info("Starting Peer Manager with auto-discovery")
 
+    # Subscribe to peer_discovered events from the libp2p node
+    Discovery.register_handler(ElixirRpc.Node, self())
+
     # Subscribe to VintageNet events (network up/down) on Nerves targets only
     if Mix.target() != :host and Code.ensure_loaded?(VintageNet) do
       apply(VintageNet, :subscribe, [["interface"]])
     end
 
-    # Schedule initial discovery
+    # Schedule initial Partisan discovery scan
     Process.send_after(self(), :discover, 2000)
 
     state = %{
@@ -87,10 +90,12 @@ defmodule ElixirRpc.PeerManager do
     new_state =
       case result do
         :ok ->
-          %{state |
-            connected_peers: MapSet.put(state.connected_peers, node_name),
-            discovered_peers: MapSet.put(state.discovered_peers, node_name)
+          %{
+            state
+            | connected_peers: MapSet.put(state.connected_peers, node_name),
+              discovered_peers: MapSet.put(state.discovered_peers, node_name)
           }
+
         _ ->
           state
       end
@@ -111,39 +116,47 @@ defmodule ElixirRpc.PeerManager do
 
   @impl true
   def handle_info(:discover, state) do
-    Logger.debug("Running peer discovery scan...")
-
-    new_peers = discover_peers()
-
-    newly_found =
-      new_peers
-      |> MapSet.new(fn {name, _spec} -> name end)
-      |> MapSet.difference(state.discovered_peers)
-
-    if MapSet.size(newly_found) > 0 do
-      Logger.info("Found #{MapSet.size(newly_found)} new peer(s)")
-
-      Enum.each(new_peers, fn {name, spec} ->
-        if MapSet.member?(newly_found, name) and not PartisanConfig.connected?(name) do
-          Logger.info("Auto-joining peer: #{inspect(name)}")
-          PartisanConfig.join_peer(spec)
-        end
-      end)
+    Logger.debug("Running Partisan peer discovery scan...")
+    # Trigger Partisan's own mDNS-based discovery (works on target).
+    # libp2p peer discovery flows in via {:libp2p, :peer_discovered, event} messages.
+    if function_exported?(:partisan_peer_discovery, :discover, 0) do
+      :partisan_peer_discovery.discover()
     end
 
-    updated_discovered =
-      new_peers
-      |> Enum.map(fn {name, _spec} -> name end)
-      |> MapSet.new()
-      |> MapSet.union(state.discovered_peers)
-
     discovery_timer = Process.send_after(self(), :discover, @discovery_interval)
-
-    {:noreply, %{state | discovered_peers: updated_discovered, discovery_timer: discovery_timer}}
+    {:noreply, %{state | discovery_timer: discovery_timer}}
   end
 
   @impl true
-  def handle_info({VintageNet, ["interface", _ifname, "connection"], _old, :internet, _meta}, state) do
+  def handle_info(
+        {:libp2p, :peer_discovered, %ElixirRpc.P2P.Node.Event.PeerDiscovered{} = event},
+        state
+      ) do
+    # A new peer was discovered via mDNS/DHT. Try to connect it to Partisan.
+    peer_id_str = ElixirRpc.PeerId.to_string(event.peer_id)
+
+    Enum.each(event.addresses, fn multiaddr ->
+      case parse_partisan_addr(peer_id_str, multiaddr) do
+        {:ok, name, spec} ->
+          unless PartisanConfig.connected?(name) do
+            Logger.info("Auto-joining libp2p-discovered peer: #{inspect(name)}")
+            PartisanConfig.join_peer(spec)
+          end
+
+        _ ->
+          :ok
+      end
+    end)
+
+    new_discovered = MapSet.put(state.discovered_peers, :"#{peer_id_str}")
+    {:noreply, %{state | discovered_peers: new_discovered}}
+  end
+
+  @impl true
+  def handle_info(
+        {VintageNet, ["interface", _ifname, "connection"], _old, :internet, _meta},
+        state
+      ) do
     Logger.info("Network connection established - triggering peer discovery")
     send(self(), :discover)
     {:noreply, state}
@@ -162,44 +175,27 @@ defmodule ElixirRpc.PeerManager do
 
   ## Private Functions
 
-  defp discover_peers do
-    if Mix.target() == :host do
-      # Host mode: no automatic discovery (can still use connect_peer/2)
-      []
-    else
-      # Target mode: use NervesDiscovery
-      discover_via_nerves()
+  # Parse a libp2p multiaddr into a Partisan peer spec.
+  # Expects multiaddr format: /ip4/<ip>/tcp/<port>
+  defp parse_partisan_addr(peer_id, multiaddr) do
+    case String.split(multiaddr, "/", trim: true) do
+      ["ip4", ip_str, "tcp", port_str] ->
+        with {port, ""} <- Integer.parse(port_str),
+             {:ok, ip} <- parse_ip(ip_str) do
+          name = :"#{peer_id}@#{ip_str}"
+          spec = %{name: name, listen_addrs: [%{ip: ip, port: port}]}
+          {:ok, name, spec}
+        end
+
+      _ ->
+        {:error, :unsupported_multiaddr}
     end
   end
 
-  defp discover_via_nerves do
-    if Code.ensure_loaded?(NervesDiscovery) do
-      case NervesDiscovery.discover(timeout: 3000) do
-        devices when is_list(devices) ->
-          parse_devices(devices)
-
-        {:error, reason} ->
-          Logger.debug("Discovery error: #{inspect(reason)}")
-          []
-      end
-    else
-      []
+  defp parse_ip(ip_str) do
+    case ip_str |> String.split(".") |> Enum.map(&Integer.parse/1) do
+      [{a, ""}, {b, ""}, {c, ""}, {d, ""}] -> {:ok, {a, b, c, d}}
+      _ -> {:error, :invalid_ip}
     end
   end
-
-  defp parse_devices(devices) do
-    Enum.flat_map(devices, fn
-      %{addresses: addresses} when is_list(addresses) ->
-        Enum.map(addresses, fn address ->
-          name = :"elixir_rpc@#{format_ip(address)}"
-          spec = %{name: name, listen_addrs: [%{ip: address, port: 10200}]}
-          {name, spec}
-        end)
-
-      _device ->
-        []
-    end)
-  end
-
-  defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
 end

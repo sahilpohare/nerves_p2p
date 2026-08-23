@@ -4,7 +4,7 @@ import Config
 # See https://hexdocs.pm/ring_logger/readme.html for more information on
 # configuring ring_logger.
 
-config :logger, backends: [RingLogger]
+config :logger, backends: [RingLogger], level: :info
 
 # Use shoehorn to start the main application. See the shoehorn
 # library documentation for more control in ordering how OTP
@@ -94,34 +94,30 @@ config :mdns_lite,
       protocol: "epmd",
       transport: "tcp",
       port: 4369
+    },
+    %{
+      protocol: "partisan",
+      transport: "tcp",
+      port: 10200
     }
   ]
 
 # Partisan configuration for embedded targets
 config :partisan,
-  # Peer service manager (handles membership)
   peer_service_manager: :partisan_pluggable_peer_service_manager,
-  # Use HyParView for mesh topology with partial views
   partisan_peer_service_manager: :partisan_hyparview_peer_service_manager,
-  # Channels configuration
   channels: [:membership, :rpc, :discovery, :capabilities],
-  # Enable broadcast trees for efficient multicast
   broadcast: true,
-  # Periodic exchange interval (ms)
   periodic_interval: 10_000,
-  # Connection settings
   connection_jitter: 5000,
   min_active_size: 3,
   max_active_size: 6,
-  # Enable TLS for production
   tls: false,
-  # Partisan listen port - will be dynamically configured by Application
-  # with OS-assigned port from libp2p bridge to avoid conflicts
-  # Listen port - will be dynamically updated by Application at runtime
-  # with an OS-assigned available port to avoid conflicts
   listen_addrs: [%{ip: {0, 0, 0, 0}, port: 10200}],
-  # Parallelism for message processing
-  parallelism: 4
+  parallelism: 4,
+  # Enable built-in mDNS peer discovery
+  peer_discovery: true,
+  peer_discovery_strategy: :partisan_mdns_peer_discovery
 
 # Import target specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

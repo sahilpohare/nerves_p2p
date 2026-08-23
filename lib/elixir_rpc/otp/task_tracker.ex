@@ -1,0 +1,219 @@
+defmodule ElixirRpc.OTP.TaskTracker do
+  @moduledoc """
+  Tracks dispatched tasks and detects orphaned work when peers disappear.
+
+  When work is dispatched to a remote peer via `ElixirRpc.OTP.Distribution`,
+  the task tracker records it. If the peer disconnects before the task
+  completes, subscribers are notified with the orphaned tasks so they can
+  be re-dispatched to another peer.
+
+  ## Usage
+
+      {:ok, tracker} = ElixirRpc.OTP.TaskTracker.start_link(node: node)
+      ElixirRpc.OTP.TaskTracker.subscribe(tracker)
+      {:ok, task_id} = ElixirRpc.OTP.TaskTracker.dispatch(tracker, peer_id, :my_worker, {:process, data})
+      :ok = ElixirRpc.OTP.TaskTracker.complete(tracker, task_id)
+
+      # If the peer disappears before completion:
+      # {:task_tracker, :peer_lost, peer_id, [%TaskTracker.Task{status: {:failed, :peer_lost}}]}
+
+  ## Task Lifecycle
+
+      dispatch/4 → :pending
+                      ↓
+            complete/2 → :completed
+            fail/3     → {:failed, reason}
+            peer loss  → {:failed, :peer_lost}   (automatic)
+
+  """
+
+  use GenServer
+  require Logger
+
+  alias ElixirRpc.{P2P.Node, PeerId}
+  alias ElixirRpc.P2P.Node.Event
+
+  import ElixirRpc.Call, only: [safe_call: 2]
+
+  defmodule Task do
+    @moduledoc "A tracked remote task."
+    @enforce_keys [:id, :peer_id, :target, :message]
+    defstruct [:id, :peer_id, :target, :message, :dispatched_at, status: :pending]
+
+    @type t :: %__MODULE__{
+            id: String.t(),
+            peer_id: PeerId.t(),
+            target: atom(),
+            message: term(),
+            status: :pending | :completed | {:failed, term()},
+            dispatched_at: integer()
+          }
+  end
+
+  defstruct tasks: %{}, subscribers: [], counter: 0
+
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts) do
+    {gen_opts, tracker_opts} = Keyword.split(opts, [:name])
+    GenServer.start_link(__MODULE__, tracker_opts, gen_opts)
+  end
+
+  @spec dispatch(GenServer.server(), PeerId.t(), atom(), term()) ::
+          {:ok, String.t()} | {:error, term()}
+  def dispatch(tracker, %PeerId{} = peer_id, target, message) when is_atom(target) do
+    safe_call(tracker, {:dispatch, peer_id, target, message})
+  end
+
+  @spec complete(GenServer.server(), String.t()) :: :ok | {:error, term()}
+  def complete(tracker, task_id), do: safe_call(tracker, {:complete, task_id})
+
+  @spec fail(GenServer.server(), String.t(), term()) :: :ok | {:error, term()}
+  def fail(tracker, task_id, reason), do: safe_call(tracker, {:fail, task_id, reason})
+
+  @spec get(GenServer.server(), String.t()) :: {:ok, Task.t()} | {:error, term()}
+  def get(tracker, task_id), do: safe_call(tracker, {:get, task_id})
+
+  @spec pending_for_peer(GenServer.server(), PeerId.t()) :: [Task.t()] | {:error, term()}
+  def pending_for_peer(tracker, %PeerId{} = peer_id) do
+    safe_call(tracker, {:pending_for_peer, peer_id})
+  end
+
+  @spec all_pending(GenServer.server()) :: [Task.t()] | {:error, term()}
+  def all_pending(tracker), do: safe_call(tracker, :all_pending)
+
+  @spec subscribe(GenServer.server()) :: :ok | {:error, term()}
+  def subscribe(tracker), do: safe_call(tracker, {:subscribe, self()})
+
+  @spec cleanup(GenServer.server()) :: non_neg_integer() | {:error, term()}
+  def cleanup(tracker), do: safe_call(tracker, :cleanup)
+
+  @impl true
+  def init(opts) do
+    node = Keyword.fetch!(opts, :node)
+    Node.register_handler(node, :connection_closed, self())
+    {:ok, %__MODULE__{}}
+  end
+
+  @impl true
+  def handle_call({:dispatch, peer_id, target, message}, _from, state) do
+    id = "task-#{state.counter + 1}"
+
+    task = %Task{
+      id: id,
+      peer_id: peer_id,
+      target: target,
+      message: message,
+      dispatched_at: ElixirRpc.Config.task_tracker_clock().monotonic_time(:millisecond)
+    }
+
+    state = %{state | tasks: Map.put(state.tasks, id, task), counter: state.counter + 1}
+    {:reply, {:ok, id}, state}
+  end
+
+  def handle_call({:complete, task_id}, _from, state) do
+    update_task_status(state, task_id, :completed)
+  end
+
+  def handle_call({:fail, task_id, reason}, _from, state) do
+    update_task_status(state, task_id, {:failed, reason})
+  end
+
+  def handle_call({:get, task_id}, _from, state) do
+    case Map.fetch(state.tasks, task_id) do
+      {:ok, task} -> {:reply, {:ok, task}, state}
+      :error -> {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  def handle_call({:pending_for_peer, peer_id}, _from, state) do
+    {:reply, pending_tasks(state, fn t -> t.peer_id == peer_id end), state}
+  end
+
+  def handle_call(:all_pending, _from, state) do
+    {:reply, pending_tasks(state, fn _ -> true end), state}
+  end
+
+  def handle_call({:subscribe, pid}, _from, state) do
+    {:reply, :ok, %{state | subscribers: [pid | state.subscribers]}}
+  end
+
+  def handle_call(:cleanup, _from, state) do
+    {removed, kept} =
+      Map.split_with(state.tasks, fn {_id, task} -> task.status != :pending end)
+
+    {:reply, map_size(removed), %{state | tasks: kept}}
+  end
+
+  def handle_call(unknown, _from, state) do
+    Logger.warning("[ElixirRpc.OTP.TaskTracker] Unknown call: #{inspect(unknown)}")
+    {:reply, {:error, :unknown_call}, state}
+  end
+
+  @impl true
+  def format_status(%{state: %__MODULE__{} = state} = status) do
+    summary = %{
+      tasks: map_size(state.tasks),
+      subscribers: length(state.subscribers),
+      counter: state.counter
+    }
+
+    %{status | state: summary}
+  end
+
+  def format_status(status), do: status
+
+  @impl true
+  def handle_info(
+        {:libp2p, :connection_closed,
+         %Event.ConnectionClosed{peer_id: peer_id, num_established: 0}},
+        state
+      ) do
+    {updated_tasks, orphaned} =
+      Enum.reduce(state.tasks, {state.tasks, []}, fn
+        {id, %{status: :pending, peer_id: ^peer_id} = task}, {tasks_acc, orphaned_acc} ->
+          failed = %{task | status: {:failed, :peer_lost}}
+          {Map.put(tasks_acc, id, failed), [failed | orphaned_acc]}
+
+        _entry, acc ->
+          acc
+      end)
+
+    case orphaned do
+      [] ->
+        {:noreply, state}
+
+      _ ->
+        for pid <- state.subscribers, Process.alive?(pid) do
+          Kernel.send(pid, {:task_tracker, :peer_lost, peer_id, orphaned})
+        end
+
+        Logger.warning(
+          "[ElixirRpc.OTP.TaskTracker] Peer #{peer_id} lost with #{length(orphaned)} pending tasks"
+        )
+
+        {:noreply, %{state | tasks: updated_tasks}}
+    end
+  end
+
+  def handle_info({:libp2p, :connection_closed, _}, state), do: {:noreply, state}
+
+  def handle_info(msg, state) do
+    Logger.debug("[ElixirRpc.OTP.TaskTracker] Unexpected: #{inspect(msg)}")
+    {:noreply, state}
+  end
+
+  defp update_task_status(state, task_id, new_status) do
+    case Map.fetch(state.tasks, task_id) do
+      {:ok, task} ->
+        tasks = Map.put(state.tasks, task_id, %{task | status: new_status})
+        {:reply, :ok, %{state | tasks: tasks}}
+
+      :error ->
+        {:reply, {:error, :not_found}, state}
+    end
+  end
+
+  defp pending_tasks(state, extra_filter) do
+    for {_id, %{status: :pending} = task} <- state.tasks, extra_filter.(task), do: task
+  end
+end

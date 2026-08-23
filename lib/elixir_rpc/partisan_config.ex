@@ -12,6 +12,82 @@ defmodule ElixirRpc.PartisanConfig do
   require Logger
 
   @doc """
+  Sets a temporary Partisan node name on startup.
+  """
+  def configure_node do
+    peer_id = ElixirRpc.Libp2pBridge.get_peer_id() || "node#{:erlang.unique_integer([:positive])}"
+    hostname = get_hostname()
+    node_name = :"#{peer_id}@#{hostname}"
+
+    case :net_kernel.start([node_name, :longnames]) do
+      {:ok, _} -> Logger.info("Node started: #{inspect(node_name)}")
+      {:error, {:already_started, _}} ->
+        :net_kernel.stop()
+        :net_kernel.start([node_name, :longnames])
+        Logger.info("Node restarted: #{inspect(node_name)}")
+      {:error, reason} ->
+        Logger.warning("Failed to start net_kernel: #{inspect(reason)}")
+    end
+
+    :partisan_config.set(:name, node_name)
+    Logger.info("Partisan node name set to: #{inspect(node_name)}")
+
+    # Allow PARTISAN_PORT env var to override the compiled-in port so
+    # multiple nodes can run on the same machine.
+    port =
+      case System.get_env("PARTISAN_PORT") do
+        nil -> nil
+        p -> String.to_integer(p)
+      end
+
+    if port do
+      :partisan_config.set(:listen_addrs, [%{ip: {127, 0, 0, 1}, port: port}])
+      Logger.info("Partisan runtime config: node=#{node_name} port=#{port}")
+    else
+      case :partisan_config.get(:listen_addrs) do
+        [%{ip: ip, port: p} | _] -> Logger.info("Partisan runtime config: node=#{node_name} port=#{inspect(ip)}:#{p}")
+        _ -> Logger.warning("Partisan listen addresses not configured")
+      end
+    end
+  end
+
+  @doc """
+  Waits for the libp2p bridge to report a listen address and updates Partisan's port.
+  Intended to run in a temporary supervised Task.
+  """
+  def configure_port do
+    case wait_for_libp2p_port(10, 500) |> parse_libp2p_port() do
+      {:ok, ip, port} ->
+        case :partisan_config.get(:listen_addrs, []) do
+          [%{port: current} | _] ->
+            Logger.info("Updating Partisan port from #{current} to #{inspect(ip)}:#{port}")
+          _ ->
+            Logger.info("Setting Partisan to use libp2p port: #{inspect(ip)}:#{port}")
+        end
+        :partisan_config.set(:listen_addrs, [%{ip: ip, port: port}])
+
+      {:error, reason} ->
+        Logger.warning("Failed to get libp2p port (#{reason}), keeping OS-assigned Partisan port")
+    end
+  end
+
+  @doc """
+  Waits for the libp2p PeerID and updates the Partisan node name.
+  Intended to run in a temporary supervised Task.
+  """
+  def configure_node_with_peer_id do
+    case wait_for_peer_id(20, 500) do
+      nil ->
+        Logger.warning("Failed to get libp2p PeerID, keeping temporary node name")
+
+      peer_id ->
+        node_name = :"#{peer_id}@#{get_hostname()}"
+        :partisan_config.set(:name, node_name)
+        Logger.info("Updated Partisan node name to: #{inspect(node_name)}")
+    end
+  end
+
+  @doc """
   Join a peer to the Partisan mesh network.
 
   ## Parameters
@@ -59,7 +135,11 @@ defmodule ElixirRpc.PartisanConfig do
   Returns a list of peer specifications.
   """
   def members do
-    :partisan_peer_service.members()
+    case :partisan_peer_service.members() do
+      {:ok, members} when is_list(members) -> members
+      members when is_list(members) -> members
+      _ -> []
+    end
   end
 
   @doc """
@@ -73,7 +153,7 @@ defmodule ElixirRpc.PartisanConfig do
   Check if a peer is currently connected.
   """
   def connected?(peer_name) do
-    members() |> Enum.any?(fn peer -> peer.name == peer_name end)
+    members() |> Enum.member?(peer_name)
   end
 
   @doc """
@@ -84,11 +164,10 @@ defmodule ElixirRpc.PartisanConfig do
   end
 
   def leave_peer(node_name) when is_atom(node_name) do
-    members()
-    |> Enum.find(fn peer -> peer.name == node_name end)
-    |> case do
-      nil -> {:error, :not_found}
-      peer -> leave_peer(peer)
+    if Enum.member?(members(), node_name) do
+      :partisan_peer_service.leave(node_name)
+    else
+      {:error, :not_found}
     end
   end
 
@@ -176,10 +255,105 @@ defmodule ElixirRpc.PartisanConfig do
   end
 
   defp get_connections do
-    # Get active connections from Partisan
     case :partisan_peer_connections.connections() do
       connections when is_list(connections) -> length(connections)
       _ -> 0
+    end
+  end
+
+  defp wait_for_peer_id(0, _delay), do: nil
+
+  defp wait_for_peer_id(retries, delay) do
+    case ElixirRpc.Libp2pBridge.get_peer_id() do
+      peer_id when is_binary(peer_id) -> peer_id
+      _ ->
+        Process.sleep(delay)
+        wait_for_peer_id(retries - 1, delay)
+    end
+  end
+
+  defp wait_for_libp2p_port(0, _delay), do: []
+
+  defp wait_for_libp2p_port(retries, delay) do
+    case ElixirRpc.Libp2pBridge.get_listen_addrs() do
+      addrs when is_list(addrs) and addrs != [] -> addrs
+      _ ->
+        Process.sleep(delay)
+        wait_for_libp2p_port(retries - 1, delay)
+    end
+  end
+
+  defp parse_libp2p_port([]), do: {:error, :no_addresses}
+
+  defp parse_libp2p_port([addr | rest]) do
+    case String.split(addr, "/", trim: true) do
+      ["ip4", ip_str, "tcp", port_str] ->
+        with {:ok, port} <- parse_port(port_str),
+             {:ok, ip} <- parse_ipv4(ip_str),
+             do: {:ok, ip, port},
+             else: (_ -> parse_libp2p_port(rest))
+
+      ["ip6", ip_str, "tcp", port_str] ->
+        with {:ok, port} <- parse_port(port_str),
+             {:ok, ip} <- parse_ipv6(ip_str),
+             do: {:ok, ip, port},
+             else: (_ -> parse_libp2p_port(rest))
+
+      _ ->
+        parse_libp2p_port(rest)
+    end
+  end
+
+  defp parse_port(port_str) do
+    case Integer.parse(port_str) do
+      {port, ""} when port in 1..65535 -> {:ok, port}
+      _ -> {:error, :invalid_port}
+    end
+  end
+
+  defp parse_ipv4(ip_str) do
+    case ip_str |> String.split(".") |> Enum.map(&Integer.parse/1) do
+      [{a, ""}, {b, ""}, {c, ""}, {d, ""}]
+      when a in 0..255 and b in 0..255 and c in 0..255 and d in 0..255 ->
+        {:ok, {a, b, c, d}}
+
+      _ ->
+        {:error, :invalid_ipv4}
+    end
+  end
+
+  defp parse_ipv6(ip_str) do
+    case :inet.parse_address(to_charlist(ip_str)) do
+      {:ok, {_, _, _, _, _, _, _, _} = ipv6} -> {:ok, ipv6}
+      _ -> {:error, :invalid_ipv6}
+    end
+  end
+
+  defp get_hostname do
+    case Mix.target() do
+      :host ->
+        "127.0.0.1"
+
+      _ ->
+        case :inet.gethostname() do
+          {:ok, hostname} -> to_string(hostname)
+          _ -> get_local_ip()
+        end
+    end
+  end
+
+  defp get_local_ip do
+    case :inet.getifaddrs() do
+      {:ok, ifaddrs} ->
+        Enum.find_value(ifaddrs, "127.0.0.1", fn {_ifname, opts} ->
+          Enum.find_value(opts, fn
+            {:addr, {a, b, c, d}} when a != 127 -> "#{a}.#{b}.#{c}.#{d}"
+            _ -> nil
+          end)
+        end)
+
+      _ ->
+        "127.0.0.1"
     end
   end
 end
