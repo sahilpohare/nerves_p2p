@@ -1,0 +1,189 @@
+#!/usr/bin/env elixir
+
+defmodule FakeIrohDiscoveryPort do
+  def run do
+    :ok = :io.setopts(:standard_io, encoding: :latin1)
+    [peer_name, _fleet_id, configured_mode] = System.argv()
+    mode = remote_mode(peer_name, configured_mode)
+    Process.put(:peer_name, peer_name)
+    loop(mode, [])
+  end
+
+  defp loop(mode, queued) do
+    case IO.binread(:stdio, 4) do
+      <<size::32>> ->
+        request = :stdio |> IO.binread(size) |> parse_request()
+        handle(mode, request, queued)
+
+      :eof ->
+        :ok
+    end
+  end
+
+  defp handle("correlation", request, []) do
+    loop("correlation", [request])
+  end
+
+  defp handle("correlation", second, [first]) do
+    respond(second)
+    respond(first)
+    loop("normal", [])
+  end
+
+  defp handle("events", request, []) do
+    event(~s({"event":"dist_incoming","stream_id":7,"from_node":"a@local","target_node":"b@local"}))
+    loop("events", [request])
+  end
+
+  defp handle("events", second, [first]) do
+    respond(second)
+    event(~s({"event":"dist_credit","stream_id":7,"bytes":3}))
+    respond(first)
+    loop("normal", [])
+  end
+
+  defp handle("malformed", request, []) do
+    frame("not json")
+    respond(request)
+    loop("normal", [])
+  end
+
+  defp handle("malformed_event", request, []) do
+    frame(~s({"event":"dist_data","stream_id":7,"bytes":))
+    respond(request)
+    loop("normal", [])
+  end
+
+  defp handle("error", %{"id" => id}, []) do
+    frame(~s({"id":#{id},"ok":false,"error":"fake_error"}))
+    loop("normal", [])
+  end
+
+  defp handle("malformed_response", %{"id" => id}, []) do
+    frame(~s({"id":#{id},"ok":true}))
+    loop("normal", [])
+  end
+
+  defp handle("timeout", _request, queued), do: loop("timeout", queued)
+  defp handle("exit", _request, _queued), do: System.halt(17)
+
+  defp handle(_mode, %{"command" => "shutdown"} = request, _queued) do
+    respond(request)
+  end
+
+  defp handle(mode, %{"command" => "find"} = request, queued)
+       when mode in [
+              "no_peer",
+              "local_peer",
+              "unauthorized",
+              "invalid_endpoint",
+              "handoff",
+              "remote_success",
+              "remote_timeout"
+            ] do
+    peers = peers(mode, Process.get(:peer_name), request)
+    respond(request, ~s({"peers":#{peers}}))
+    loop(mode, queued)
+  end
+
+  defp handle(mode, request, queued) do
+    respond(request)
+    loop(mode, queued)
+  end
+
+  defp respond(%{"id" => id, "command" => "identity"}) do
+    result =
+      ~s({"command":"identity","endpoint_id":"fake-endpoint","endpoint_address":{"endpoint_id":"fake-endpoint","direct_addresses":["127.0.0.1:4040"]}})
+
+    frame(~s({"id":#{id},"ok":true,"result":#{result}}))
+  end
+
+  defp respond(%{"id" => id, "command" => "authorize", payload: payload}) do
+    result = ~s({"command":"authorize","authorized":true,"request":#{payload}})
+    frame(~s({"id":#{id},"ok":true,"result":#{result}}))
+  end
+
+  defp respond(%{"id" => id, "command" => "network_start", payload: payload}) do
+    result =
+      ~s({"command":"network_start","endpoint_address":{"endpoint_id":"fake-endpoint","direct_addresses":["127.0.0.1:4040"]},"request":#{payload}})
+
+    frame(~s({"id":#{id},"ok":true,"result":#{result}}))
+  end
+
+  defp respond(%{"id" => id, "command" => command}) do
+    frame(
+      ~s({"id":#{id},"ok":true,"result":{"command":"#{command}","request":#{payload(command)}}})
+    )
+  end
+
+  defp respond(%{"id" => id}, result) do
+    frame(~s({"id":#{id},"ok":true,"result":#{result}}))
+  end
+
+  defp peers("no_peer", _peer_name, _request), do: "[]"
+  defp peers("remote_timeout", _peer_name, _request), do: "[]"
+
+  defp peers("remote_success", _peer_name, _request) do
+    ~s([{"endpoint_id":"remote-endpoint","node_name":"remote@rpi4.local","partisan_ip":"127.0.0.1","partisan_port":10200,"capabilities":{"gpu":true},"sequence":7}])
+  end
+
+  defp peers("local_peer", peer_name, %{valid_predicates: true}) do
+    peer(peer_name, "127.0.0.1", 10_200)
+  end
+
+  defp peers("local_peer", _peer_name, _request), do: "[]"
+  defp peers("unauthorized", _peer_name, _request), do: peer("stranger@host", "127.0.0.1", 10_200)
+  defp peers("invalid_endpoint", peer_name, _request), do: peer(peer_name, "not-an-ip", 10_200)
+  defp peers("handoff", peer_name, _request), do: peer(peer_name, "127.0.0.1", 10_200)
+
+  defp peer(node_name, ip, port) do
+    ~s([{"node_name":"#{node_name}","partisan_ip":"#{ip}","partisan_port":#{port}}])
+  end
+
+  defp frame(payload) do
+    :ok = IO.binwrite(:stdio, <<byte_size(payload)::32, payload::binary>>)
+  end
+
+  defp event(payload), do: frame(payload)
+
+  defp payload(command), do: Process.get({:payload, command})
+
+  defp remote_mode(peer_name, configured_mode) do
+    cond do
+      String.contains?(peer_name, "remote_success") -> "remote_success"
+      String.contains?(peer_name, "remote_timeout") -> "remote_timeout"
+      true -> configured_mode
+    end
+  end
+
+  defp parse_request(payload) do
+    [_, id] = Regex.run(~r/"id":(\d+)/, payload)
+    [_, command] = Regex.run(~r/"command":"([^"]+)"/, payload)
+
+    Process.put({:payload, command}, payload)
+
+    %{
+      "id" => String.to_integer(id),
+      "command" => command,
+      payload: payload,
+      valid_predicates:
+        Enum.all?(
+          [
+            ~s("name":"camera"),
+            ~s("value":true),
+            ~s("name":"site"),
+            ~s("value":"north"),
+            ~s("op":"at_least"),
+            ~s("name":"cores"),
+            ~s("value":4),
+            ~s("op":"contains"),
+            ~s("name":"formats"),
+            ~s("value":"raw")
+          ],
+          &String.contains?(payload, &1)
+        )
+    }
+  end
+end
+
+FakeIrohDiscoveryPort.run()
