@@ -6,6 +6,10 @@ defmodule ElixirRpc do
   @doc """
   Hello world.
 
+  P: the `ElixirRpc` module is loaded.
+  C: `hello/0` is called.
+  Q: it returns `:world`.
+
   ## Examples
 
       iex> ElixirRpc.hello()

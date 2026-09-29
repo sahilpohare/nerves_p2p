@@ -16,7 +16,7 @@ defmodule ElixirRpc.Integration.TwoNodeTest do
 
   alias ElixirRpc.P2P.Node
   alias ElixirRpc.P2P.Node.Event
-  alias ElixirRpc.{PeerId, OTP.Distribution, OTP.Distribution.Server, RequestResponse}
+  alias ElixirRpc.{PeerId, OTP.Distribution, OTP.Distribution.Server}
 
   @connect_timeout 5_000
   @rpc_timeout 8_000
@@ -34,13 +34,6 @@ defmodule ElixirRpc.Integration.TwoNodeTest do
 
   defp subscribe(node, event_type) do
     Node.register_handler(node, event_type, self())
-  end
-
-  # Subscribe to outbound_response so Distribution.call/5 receives its reply.
-  # Distribution.call does `receive {:libp2p, :outbound_response, ...}` in the
-  # calling process, but it never subscribes itself — the caller must do it.
-  defp subscribe_for_rpc(node) do
-    RequestResponse.register_handler(node, self())
   end
 
   # Connect node2 → node1, wait for connection_established on node1.
@@ -63,7 +56,9 @@ defmodule ElixirRpc.Integration.TwoNodeTest do
       %{node2: node2}
     end
 
-    test "nodes connect when node2 dials node1", %{node2: node2} do
+    test "P[two nodes are listening] C[node2 dials node1] Q[both report the connection]", %{
+      node2: node2
+    } do
       {:ok, peer1_id} = Node.peer_id(node1())
       {:ok, peer2_id} = Node.peer_id(node2)
       peer1_str = PeerId.to_string(peer1_id)
@@ -92,6 +87,7 @@ defmodule ElixirRpc.Integration.TwoNodeTest do
 
       # node2 lists node1 as connected
       {:ok, peers2} = Node.connected_peers(node2)
+
       assert Enum.any?(peers2, &(PeerId.to_string(&1) == peer1_str)),
              "node2 does not list node1 in connected peers: #{inspect(peers2)}"
     end
@@ -118,18 +114,20 @@ defmodule ElixirRpc.Integration.TwoNodeTest do
       %{node2: node2, peer2_id: peer2_id}
     end
 
-    test "call from node1 to a GenServer on node2 returns a result", %{peer2_id: peer2_id} do
+    test "P[a remote GenServer is registered] C[call it from node1] Q[its result returns]", %{
+      peer2_id: peer2_id
+    } do
       name = :"ping_server_#{System.unique_integer([:positive])}"
       {:ok, pid} = GenServer.start_link(ElixirRpc.Integration.EchoServer, :ready, name: name)
       on_exit(fn -> catch_exit(GenServer.stop(pid)) end)
-
-      subscribe_for_rpc(node1())
 
       result = Distribution.call(node1(), peer2_id, name, :ping, @rpc_timeout)
       assert {:ok, {:pong, :ready}} = result
     end
 
-    test "cast from node1 updates state of a GenServer on node2", %{peer2_id: peer2_id} do
+    test "P[a remote GenServer is registered] C[cast from node1] Q[remote state updates]", %{
+      peer2_id: peer2_id
+    } do
       name = :"cast_target_#{System.unique_integer([:positive])}"
       {:ok, pid} = GenServer.start_link(ElixirRpc.Integration.EchoServer, [], name: name)
       on_exit(fn -> catch_exit(GenServer.stop(pid)) end)
@@ -140,7 +138,9 @@ defmodule ElixirRpc.Integration.TwoNodeTest do
       assert :hello in GenServer.call(pid, :state)
     end
 
-    test "send delivers a bare message to a registered process", %{peer2_id: peer2_id} do
+    test "P[a remote process is registered] C[send a bare message] Q[the process receives it]", %{
+      peer2_id: peer2_id
+    } do
       test_pid = self()
       name = :"receiver_#{System.unique_integer([:positive])}"
 
@@ -190,10 +190,8 @@ defmodule ElixirRpc.Integration.TwoNodeTest do
       %{node2: node2, peer2_id: peer2_id, cap_name: cap_name}
     end
 
-    test "String.upcase is applied on node2 and result returned to node1",
+    test "P[String is available remotely] C[apply upcase on node2] Q[the result returns to node1]",
          %{peer2_id: peer2_id, cap_name: cap_name} do
-      subscribe_for_rpc(node1())
-
       result =
         Distribution.call(
           node1(),
@@ -206,10 +204,8 @@ defmodule ElixirRpc.Integration.TwoNodeTest do
       assert {:ok, {:ok, "HELLO"}} = result
     end
 
-    test "arithmetic task executes correctly on remote node",
+    test "P[arithmetic is available remotely] C[execute a task] Q[the correct result returns]",
          %{peer2_id: peer2_id, cap_name: cap_name} do
-      subscribe_for_rpc(node1())
-
       result =
         Distribution.call(
           node1(),
@@ -222,10 +218,8 @@ defmodule ElixirRpc.Integration.TwoNodeTest do
       assert {:ok, {:ok, 42}} = result
     end
 
-    test "calling an unknown module returns an error tuple",
+    test "P[a module is unknown remotely] C[call the module] Q[an error tuple returns]",
          %{peer2_id: peer2_id, cap_name: cap_name} do
-      subscribe_for_rpc(node1())
-
       result =
         Distribution.call(
           node1(),
@@ -238,10 +232,8 @@ defmodule ElixirRpc.Integration.TwoNodeTest do
       assert {:ok, {:error, _reason}} = result
     end
 
-    test "multiple sequential tasks all succeed",
+    test "P[a remote node remains connected] C[run sequential tasks] Q[every task succeeds]",
          %{peer2_id: peer2_id, cap_name: cap_name} do
-      subscribe_for_rpc(node1())
-
       results =
         for n <- 1..5 do
           Distribution.call(

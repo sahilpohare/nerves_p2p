@@ -86,11 +86,16 @@ defmodule ElixirRpc.Discovery do
   defmodule State do
     @moduledoc false
     defstruct [
-      :providers,           # Map of provider_module => provider_state
-      :discovered_peers,    # MapSet of %PeerInfo{}
-      :capabilities,        # Map of capability => [%PeerInfo{}]
-      :local_capabilities,  # MapSet of advertised capabilities
-      :subscribers          # List of PIDs subscribed to discovery events
+      # Map of provider_module => provider_state
+      :providers,
+      # MapSet of %PeerInfo{}
+      :discovered_peers,
+      # Map of capability => [%PeerInfo{}]
+      :capabilities,
+      # MapSet of advertised capabilities
+      :local_capabilities,
+      # List of PIDs subscribed to discovery events
+      :subscribers
     ]
   end
 
@@ -172,10 +177,11 @@ defmodule ElixirRpc.Discovery do
     Logger.info("Starting Discovery coordinator")
 
     # Get configured providers or use defaults
-    provider_modules = Keyword.get(opts, :providers, [
-      ElixirRpc.Discovery.MdnsProvider,
-      ElixirRpc.Discovery.DhtProvider
-    ])
+    provider_modules =
+      Keyword.get(opts, :providers, [
+        ElixirRpc.Discovery.MdnsProvider,
+        ElixirRpc.Discovery.DhtProvider
+      ])
 
     # Initialize each provider
     providers =
@@ -210,26 +216,8 @@ defmodule ElixirRpc.Discovery do
 
   @impl true
   def handle_call(:advertise_self, _from, state) do
-    peer_info = build_peer_info(state)
-
-    # Advertise across all providers
-    {results, new_providers} =
-      Enum.map_reduce(state.providers, %{}, fn {module, provider_state}, acc ->
-        case module.advertise_self(provider_state, peer_info) do
-          {:ok, new_state} ->
-            {{module, :ok}, Map.put(acc, module, new_state)}
-
-          {:error, reason} ->
-            Logger.warning("Provider #{inspect(module)} failed to advertise: #{inspect(reason)}")
-            {{module, {:error, reason}}, Map.put(acc, module, provider_state)}
-        end
-      end)
-
-    # Check if any succeeded
-    success = Enum.any?(results, fn {_mod, result} -> result == :ok end)
-    reply = if success, do: :ok, else: {:error, :all_providers_failed}
-
-    {:reply, reply, %{state | providers: new_providers}}
+    {reply, new_state} = advertise_self(state)
+    {:reply, reply, new_state}
   end
 
   @impl true
@@ -242,21 +230,26 @@ defmodule ElixirRpc.Discovery do
             {{module, :ok}, Map.put(acc, module, new_state)}
 
           {:error, reason} ->
-            Logger.warning("Provider #{inspect(module)} failed to advertise capability: #{inspect(reason)}")
+            Logger.warning(
+              "Provider #{inspect(module)} failed to advertise capability: #{inspect(reason)}"
+            )
+
             {{module, {:error, reason}}, Map.put(acc, module, provider_state)}
         end
       end)
 
     success = Enum.any?(results, fn {_mod, result} -> result == :ok end)
 
-    new_state = if success do
-      %{state |
-        providers: new_providers,
-        local_capabilities: MapSet.put(state.local_capabilities, capability)
-      }
-    else
-      %{state | providers: new_providers}
-    end
+    new_state =
+      if success do
+        %{
+          state
+          | providers: new_providers,
+            local_capabilities: MapSet.put(state.local_capabilities, capability)
+        }
+      else
+        %{state | providers: new_providers}
+      end
 
     reply = if success, do: :ok, else: {:error, :all_providers_failed}
     {:reply, reply, new_state}
@@ -279,7 +272,7 @@ defmodule ElixirRpc.Discovery do
     # Deduplicate by peer_id and node
     unique_peers =
       all_peers
-      |> Enum.uniq_by(& {&1.peer_id, &1.node})
+      |> Enum.uniq_by(&{&1.peer_id, &1.node})
       |> Enum.sort_by(& &1.last_seen, {:desc, DateTime})
 
     {:reply, {:ok, unique_peers}, %{state | providers: new_providers}}
@@ -289,7 +282,8 @@ defmodule ElixirRpc.Discovery do
   def handle_call({:find_peer, node_name}, _from, state) do
     # Try each provider until we find the peer
     result =
-      Enum.reduce_while(state.providers, {:error, :not_found}, fn {module, provider_state}, _acc ->
+      Enum.reduce_while(state.providers, {:error, :not_found}, fn {module, provider_state},
+                                                                  _acc ->
         case module.find_peer(provider_state, node_name) do
           {:ok, peer_info, _new_state} ->
             {:halt, {:ok, peer_info}}
@@ -313,7 +307,7 @@ defmodule ElixirRpc.Discovery do
 
     unique_peers =
       all_peers
-      |> Enum.uniq_by(& {&1.peer_id, &1.node})
+      |> Enum.uniq_by(&{&1.peer_id, &1.node})
       |> Enum.sort_by(& &1.last_seen, {:desc, DateTime})
 
     {:reply, unique_peers, state}
@@ -327,29 +321,38 @@ defmodule ElixirRpc.Discovery do
 
   @impl true
   def handle_cast(:scan, state) do
-    # Trigger scan on all providers that support it
-    Enum.each(state.providers, fn {module, _provider_state} ->
-      if function_exported?(module, :scan, 1) do
-        send(self(), {:scan_provider, module})
-      end
-    end)
-
+    queue_scans(state)
     {:noreply, state}
   end
 
   @impl true
   def handle_info(:advertise_self_initial, state) do
-    # Initial advertisement after startup
-    advertise_self()
-    {:noreply, state}
+    {_reply, new_state} = advertise_self(state)
+    {:noreply, new_state}
   end
 
   @impl true
   def handle_info(:scan, state) do
-    # Periodic scan
-    scan()
+    queue_scans(state)
     schedule_scan(30_000)
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:libp2p, _event_type, event}, state) do
+    providers =
+      Map.new(state.providers, fn {module, provider_state} ->
+        case function_exported?(module, :handle_event, 2) do
+          true ->
+            {:ok, new_state} = module.handle_event(provider_state, event)
+            {module, new_state}
+
+          false ->
+            {module, provider_state}
+        end
+      end)
+
+    {:noreply, %{state | providers: providers}}
   end
 
   @impl true
@@ -377,6 +380,31 @@ defmodule ElixirRpc.Discovery do
   end
 
   ## Private Functions
+
+  defp advertise_self(state) do
+    peer_info = build_peer_info(state)
+
+    {results, providers} =
+      Enum.map_reduce(state.providers, %{}, fn {module, provider_state}, acc ->
+        case module.advertise_self(provider_state, peer_info) do
+          {:ok, new_state} ->
+            {:ok, Map.put(acc, module, new_state)}
+
+          {:error, reason} ->
+            Logger.warning("Provider #{inspect(module)} failed to advertise: #{inspect(reason)}")
+            {{:error, reason}, Map.put(acc, module, provider_state)}
+        end
+      end)
+
+    reply = if :ok in results, do: :ok, else: {:error, :all_providers_failed}
+    {reply, %{state | providers: providers}}
+  end
+
+  defp queue_scans(state) do
+    Enum.each(state.providers, fn {module, _provider_state} ->
+      if function_exported?(module, :scan, 1), do: send(self(), {:scan_provider, module})
+    end)
+  end
 
   defp build_peer_info(state) do
     %PeerInfo{
@@ -409,5 +437,4 @@ defmodule ElixirRpc.Discovery do
   defp schedule_scan(interval) do
     Process.send_after(self(), :scan, interval)
   end
-
 end

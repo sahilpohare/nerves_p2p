@@ -28,7 +28,8 @@ defmodule ElixirRpc.OTP.Distribution do
   serve remote calls.
   """
 
-  alias ElixirRpc.{P2P.Node, PeerId, RequestResponse}
+  alias ElixirRpc.{PeerId, RequestResponse}
+  alias ElixirRpc.OTP.Distribution.Server
 
   @call_timeout 5_000
 
@@ -38,21 +39,16 @@ defmodule ElixirRpc.OTP.Distribution do
       when is_atom(name) do
     payload = encode({:call, name, message})
 
-    case RequestResponse.send_request(node, peer, payload) do
-      {:ok, _request_id} ->
-        receive do
-          {:libp2p, :outbound_response, %Node.Event.OutboundResponse{data: response_data}} ->
-            case decode(response_data) do
-              {:ok, {:reply, reply}} -> {:ok, reply}
-              {:ok, {:error, reason}} -> {:error, reason}
-              {:error, _} -> {:error, :invalid_response}
-            end
-        after
-          timeout -> {:error, :timeout}
+    case Server.call(node, peer, payload, timeout) do
+      {:ok, response_data} ->
+        case decode(response_data) do
+          {:ok, {:reply, reply}} -> {:ok, reply}
+          {:ok, {:error, reason}} -> {:error, reason}
+          {:error, _} -> {:error, :invalid_response}
         end
 
-      {:error, _} ->
-        {:error, :unreachable}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

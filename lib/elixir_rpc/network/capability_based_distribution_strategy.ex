@@ -28,6 +28,20 @@ defmodule ElixirRpc.Network.CapabilityDistributionStrategy do
   def choose_node(child_spec, members) do
     alive = Enum.filter(members, &match?(%{status: :alive}, &1))
 
+    case get_in(child_spec, [:meta, :cdp_target_node]) do
+      nil -> choose_by_requirements(child_spec, alive)
+      target_node -> choose_target(target_node, alive)
+    end
+  end
+
+  defp choose_target(target_node, alive) do
+    case Enum.find(alive, fn %{name: {_supervisor, node}} -> node == target_node end) do
+      nil -> {:error, "target node is not an alive Horde member: #{inspect(target_node)}"}
+      member -> {:ok, member}
+    end
+  end
+
+  defp choose_by_requirements(child_spec, alive) do
     case alive do
       [] ->
         {:error, "no alive nodes"}

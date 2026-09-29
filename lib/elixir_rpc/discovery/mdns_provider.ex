@@ -30,19 +30,23 @@ defmodule ElixirRpc.Discovery.MdnsProvider do
 
   require Logger
   alias ElixirRpc.Discovery.PeerInfo
-  alias ElixirRpc.Libp2pBridge
+  alias ElixirRpc.{Libp2pBridge, PeerId}
+  alias ElixirRpc.P2P.Node.Event.PeerDiscovered
 
   defmodule State do
     @moduledoc false
     defstruct [
-      :discovered_peers,  # Map of peer_id => PeerInfo
+      # Map of peer_id => PeerInfo
+      :discovered_peers,
       :last_scan
     ]
   end
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
     Logger.debug("Initializing mDNS discovery provider")
+    node = Keyword.get(opts, :node, ElixirRpc.Node)
+    :ok = ElixirRpc.P2P.Discovery.register_handler(node)
 
     state = %State{
       discovered_peers: %{},
@@ -51,6 +55,22 @@ defmodule ElixirRpc.Discovery.MdnsProvider do
 
     {:ok, state}
   end
+
+  @impl true
+  def handle_event(state, %PeerDiscovered{} = event) do
+    peer_id = PeerId.to_string(event.peer_id)
+
+    peer = %PeerInfo{
+      peer_id: peer_id,
+      listen_addrs: event.addresses,
+      last_seen: DateTime.utc_now(),
+      discovery_source: :mdns
+    }
+
+    {:ok, %{state | discovered_peers: Map.put(state.discovered_peers, peer_id, peer)}}
+  end
+
+  def handle_event(state, _event), do: {:ok, state}
 
   @impl true
   def advertise_self(state, _peer_info) do
@@ -117,7 +137,12 @@ defmodule ElixirRpc.Discovery.MdnsProvider do
             end
           end)
 
-        new_state = %{state | discovered_peers: new_peers, last_scan: System.monotonic_time(:millisecond)}
+        new_state = %{
+          state
+          | discovered_peers: new_peers,
+            last_scan: System.monotonic_time(:millisecond)
+        }
+
         {:ok, new_state}
 
       _error ->

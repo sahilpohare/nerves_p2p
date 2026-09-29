@@ -37,7 +37,9 @@ fn stop_node(handle: ResourceArc<NodeHandle>) -> rustler::Atom {
 
 #[rustler::nif]
 fn register_event_handler(handle: ResourceArc<NodeHandle>, pid: LocalPid) -> rustler::Atom {
-    let _ = handle.cmd_tx.try_send(Command::RegisterEventHandler { pid });
+    let _ = handle
+        .cmd_tx
+        .try_send(Command::RegisterEventHandler { pid });
     atoms::ok()
 }
 
@@ -88,8 +90,18 @@ fn dial(handle: ResourceArc<NodeHandle>, addr: String) -> NifResult<rustler::Ato
 }
 
 #[rustler::nif]
-fn publish(handle: ResourceArc<NodeHandle>, topic: String, data: Binary) -> NifResult<rustler::Atom> {
-    send_typed(&handle, Command::Publish { topic, data: data.as_slice().to_vec() })?;
+fn publish(
+    handle: ResourceArc<NodeHandle>,
+    topic: String,
+    data: Binary,
+) -> NifResult<rustler::Atom> {
+    send_typed(
+        &handle,
+        Command::Publish {
+            topic,
+            data: data.as_slice().to_vec(),
+        },
+    )?;
     Ok(atoms::ok())
 }
 
@@ -112,14 +124,23 @@ fn gossipsub_mesh_peers(
     handle: ResourceArc<NodeHandle>,
     topic: String,
 ) -> NifResult<(rustler::Atom, Vec<String>)> {
-    let peers = query_typed(&handle, |tx| Command::GossipsubMeshPeers { topic, reply: tx })?;
-    Ok((atoms::ok(), peers.into_iter().map(|p| p.to_base58()).collect()))
+    let peers = query_typed(&handle, |tx| Command::GossipsubMeshPeers {
+        topic,
+        reply: tx,
+    })?;
+    Ok((
+        atoms::ok(),
+        peers.into_iter().map(|p| p.to_base58()).collect(),
+    ))
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
 fn gossipsub_all_peers(handle: ResourceArc<NodeHandle>) -> NifResult<(rustler::Atom, Vec<String>)> {
     let peers = query_typed(&handle, |tx| Command::GossipsubAllPeers { reply: tx })?;
-    Ok((atoms::ok(), peers.into_iter().map(|p| p.to_base58()).collect()))
+    Ok((
+        atoms::ok(),
+        peers.into_iter().map(|p| p.to_base58()).collect(),
+    ))
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
@@ -128,43 +149,70 @@ fn gossipsub_peer_score(
     peer_id_str: String,
 ) -> NifResult<(rustler::Atom, f64)> {
     let peer_id: libp2p::PeerId = peer_id_str.parse().map_err(NifError::from)?;
-    let score = query_typed(&handle, |tx| Command::GossipsubPeerScore { peer_id, reply: tx })?;
+    let score = query_typed(&handle, |tx| Command::GossipsubPeerScore {
+        peer_id,
+        reply: tx,
+    })?;
     Ok((atoms::ok(), score.unwrap_or(0.0)))
 }
 
 // ── DHT ──────────────────────────────────────────────────────────
 
 #[rustler::nif]
-fn dht_put(handle: ResourceArc<NodeHandle>, key: Binary, value: Binary) -> NifResult<rustler::Atom> {
-    send_typed(&handle, Command::DhtPut {
-        key: key.as_slice().to_vec(),
-        value: value.as_slice().to_vec(),
-    })?;
+fn dht_put(
+    handle: ResourceArc<NodeHandle>,
+    key: Binary,
+    value: Binary,
+) -> NifResult<rustler::Atom> {
+    send_typed(
+        &handle,
+        Command::DhtPut {
+            key: key.as_slice().to_vec(),
+            value: value.as_slice().to_vec(),
+        },
+    )?;
     Ok(atoms::ok())
 }
 
 #[rustler::nif]
 fn dht_get(handle: ResourceArc<NodeHandle>, key: Binary) -> NifResult<rustler::Atom> {
-    send_typed(&handle, Command::DhtGet { key: key.as_slice().to_vec() })?;
+    send_typed(
+        &handle,
+        Command::DhtGet {
+            key: key.as_slice().to_vec(),
+        },
+    )?;
     Ok(atoms::ok())
 }
 
 #[rustler::nif]
 fn dht_find_peer(handle: ResourceArc<NodeHandle>, peer_id_str: String) -> NifResult<rustler::Atom> {
-    let peer_id = peer_id_str.parse::<libp2p::PeerId>().map_err(NifError::from)?;
+    let peer_id = peer_id_str
+        .parse::<libp2p::PeerId>()
+        .map_err(NifError::from)?;
     send_typed(&handle, Command::DhtFindPeer { peer_id })?;
     Ok(atoms::ok())
 }
 
 #[rustler::nif]
 fn dht_provide(handle: ResourceArc<NodeHandle>, key: Binary) -> NifResult<rustler::Atom> {
-    send_typed(&handle, Command::DhtProvide { key: key.as_slice().to_vec() })?;
+    send_typed(
+        &handle,
+        Command::DhtProvide {
+            key: key.as_slice().to_vec(),
+        },
+    )?;
     Ok(atoms::ok())
 }
 
 #[rustler::nif]
 fn dht_find_providers(handle: ResourceArc<NodeHandle>, key: Binary) -> NifResult<rustler::Atom> {
-    send_typed(&handle, Command::DhtFindProviders { key: key.as_slice().to_vec() })?;
+    send_typed(
+        &handle,
+        Command::DhtFindProviders {
+            key: key.as_slice().to_vec(),
+        },
+    )?;
     Ok(atoms::ok())
 }
 
@@ -194,16 +242,23 @@ fn kad_import_routing_table(
     data: Binary,
 ) -> NifResult<(rustler::Atom, u64)> {
     let entries = dht_state::decode(data.as_slice()).map_err(|e| match e {
-        dht_state::DhtStateError::InputTooLarge { got, max } => NifError::InputTooLarge { got, max },
+        dht_state::DhtStateError::InputTooLarge { got, max } => {
+            NifError::InputTooLarge { got, max }
+        }
         dht_state::DhtStateError::Truncated { offset, need } => {
             NifError::Internal(format!("truncated at offset {offset}, need {need}"))
         }
-        dht_state::DhtStateError::BadMagic { .. } => NifError::Internal("bad magic header".to_string()),
+        dht_state::DhtStateError::BadMagic { .. } => {
+            NifError::Internal("bad magic header".to_string())
+        }
         dht_state::DhtStateError::UnsupportedVersion { version } => {
             NifError::Internal(format!("unsupported wire version {version}"))
         }
     })?;
-    let result = query_typed(&handle, |tx| Command::DhtImportRoutingTable { entries, reply: tx })?;
+    let result = query_typed(&handle, |tx| Command::DhtImportRoutingTable {
+        entries,
+        reply: tx,
+    })?;
     let count = result.map_err(|()| NifError::DhtNotEnabled)?;
     Ok((atoms::ok(), count as u64))
 }
@@ -218,12 +273,16 @@ fn rpc_send_request(
 ) -> NifResult<(rustler::Atom, String)> {
     let peer_id: libp2p::PeerId = peer_id_str.parse().map_err(NifError::from)?;
     let (tx, rx) = oneshot::channel();
-    send_typed(&handle, Command::RpcSendRequest {
-        peer_id,
-        data: data.as_slice().to_vec(),
-        reply: tx,
-    })?;
-    let req_id = rx.blocking_recv()
+    send_typed(
+        &handle,
+        Command::RpcSendRequest {
+            peer_id,
+            data: data.as_slice().to_vec(),
+            reply: tx,
+        },
+    )?;
+    let req_id = rx
+        .blocking_recv()
         .map_err(|_| Into::<rustler::Error>::into(NifError::NodeStopped))?;
     Ok((atoms::ok(), req_id))
 }
@@ -234,18 +293,26 @@ fn rpc_send_response(
     channel_id: String,
     data: Binary,
 ) -> NifResult<rustler::Atom> {
-    send_typed(&handle, Command::RpcSendResponse {
-        channel_id,
-        data: data.as_slice().to_vec(),
-    })?;
+    send_typed(
+        &handle,
+        Command::RpcSendResponse {
+            channel_id,
+            data: data.as_slice().to_vec(),
+        },
+    )?;
     Ok(atoms::ok())
 }
 
 // ── Relay ────────────────────────────────────────────────────────
 
 #[rustler::nif]
-fn listen_via_relay(handle: ResourceArc<NodeHandle>, relay_addr: String) -> NifResult<rustler::Atom> {
-    let addr = relay_addr.parse::<libp2p::Multiaddr>().map_err(NifError::from)?;
+fn listen_via_relay(
+    handle: ResourceArc<NodeHandle>,
+    relay_addr: String,
+) -> NifResult<rustler::Atom> {
+    let addr = relay_addr
+        .parse::<libp2p::Multiaddr>()
+        .map_err(NifError::from)?;
     send_typed(&handle, Command::ListenViaRelay { relay_addr: addr })?;
     Ok(atoms::ok())
 }
@@ -259,8 +326,17 @@ fn rendezvous_register(
     ttl: u64,
     rendezvous_peer_str: String,
 ) -> NifResult<rustler::Atom> {
-    let rendezvous_peer = rendezvous_peer_str.parse::<libp2p::PeerId>().map_err(NifError::from)?;
-    send_typed(&handle, Command::RendezvousRegister { namespace, ttl, rendezvous_peer })?;
+    let rendezvous_peer = rendezvous_peer_str
+        .parse::<libp2p::PeerId>()
+        .map_err(NifError::from)?;
+    send_typed(
+        &handle,
+        Command::RendezvousRegister {
+            namespace,
+            ttl,
+            rendezvous_peer,
+        },
+    )?;
     Ok(atoms::ok())
 }
 
@@ -270,8 +346,16 @@ fn rendezvous_discover(
     namespace: String,
     rendezvous_peer_str: String,
 ) -> NifResult<rustler::Atom> {
-    let rendezvous_peer = rendezvous_peer_str.parse::<libp2p::PeerId>().map_err(NifError::from)?;
-    send_typed(&handle, Command::RendezvousDiscover { namespace, rendezvous_peer })?;
+    let rendezvous_peer = rendezvous_peer_str
+        .parse::<libp2p::PeerId>()
+        .map_err(NifError::from)?;
+    send_typed(
+        &handle,
+        Command::RendezvousDiscover {
+            namespace,
+            rendezvous_peer,
+        },
+    )?;
     Ok(atoms::ok())
 }
 
@@ -281,8 +365,16 @@ fn rendezvous_unregister(
     namespace: String,
     rendezvous_peer_str: String,
 ) -> NifResult<rustler::Atom> {
-    let rendezvous_peer = rendezvous_peer_str.parse::<libp2p::PeerId>().map_err(NifError::from)?;
-    send_typed(&handle, Command::RendezvousUnregister { namespace, rendezvous_peer })?;
+    let rendezvous_peer = rendezvous_peer_str
+        .parse::<libp2p::PeerId>()
+        .map_err(NifError::from)?;
+    send_typed(
+        &handle,
+        Command::RendezvousUnregister {
+            namespace,
+            rendezvous_peer,
+        },
+    )?;
     Ok(atoms::ok())
 }
 
@@ -310,7 +402,10 @@ fn generate_keypair<'a>(env: rustler::Env<'a>) -> rustler::Term<'a> {
 #[rustler::nif(schedule = "DirtyCpu")]
 fn keypair_from_protobuf<'a>(env: rustler::Env<'a>, bytes: Binary) -> rustler::Term<'a> {
     if bytes.len() > error::MAX_KEYPAIR_BYTES {
-        let err = NifError::InputTooLarge { got: bytes.len(), max: error::MAX_KEYPAIR_BYTES };
+        let err = NifError::InputTooLarge {
+            got: bytes.len(),
+            max: error::MAX_KEYPAIR_BYTES,
+        };
         return (atoms::error(), err).encode(env);
     }
     match libp2p::identity::Keypair::from_protobuf_encoding(bytes.as_slice()) {

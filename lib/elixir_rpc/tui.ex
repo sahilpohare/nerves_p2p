@@ -42,13 +42,16 @@ defmodule ElixirRpc.TUI do
     :node,
     :local_peer_id,
     :listen_addrs,
-    peers: [],          # [{peer_id_str, [addr]}]
-    logs: [],           # [{timestamp, event_tag, summary}]
+    # [{peer_id_str, [addr]}]
+    peers: [],
+    # [{timestamp, event_tag, summary}]
+    logs: [],
     active_panel: :peers,
     rpc_input: "",
     rpc_history: [],
     rpc_result: nil,
-    rpc_mode: :idle,    # :idle | :editing
+    # :idle | :editing
+    rpc_mode: :idle,
     width: 120,
     height: 40
   ]
@@ -460,7 +463,10 @@ defmodule ElixirRpc.TUI do
       hint,
       prompt_line,
       result_line,
-      if(history_lines != [], do: [Owl.Data.tag("  History:\n", :faint) | history_lines], else: [])
+      if(history_lines != [],
+        do: [Owl.Data.tag("  History:\n", :faint) | history_lines],
+        else: []
+      )
     ]
 
     print_panel("RPC Call", content, state)
@@ -483,6 +489,7 @@ defmodule ElixirRpc.TUI do
         |> Enum.take(state.height - 8)
         |> Enum.map(fn {ts, tag, msg} ->
           color = Map.get(tag_color, tag, :white)
+
           [
             Owl.Data.tag("  #{ts} ", :faint),
             Owl.Data.tag("[#{tag}]", color),
@@ -516,6 +523,7 @@ defmodule ElixirRpc.TUI do
       end
 
     Owl.IO.puts(Owl.Data.tag(keys, :faint))
+
     Owl.IO.puts(
       Owl.Data.tag(
         "  Listen: #{Enum.join(state.listen_addrs, ", ")}",
@@ -533,11 +541,14 @@ defmodule ElixirRpc.TUI do
   defp terminal_size do
     case :io.columns() do
       {:ok, cols} ->
-        rows = case :io.rows() do
-          {:ok, r} -> r
-          _ -> 40
-        end
+        rows =
+          case :io.rows() do
+            {:ok, r} -> r
+            _ -> 40
+          end
+
         {cols, rows}
+
       _ ->
         {120, 40}
     end
@@ -546,8 +557,12 @@ defmodule ElixirRpc.TUI do
   # Non-blocking single-char read using :io in raw mode
   defp read_key do
     case IO.getn("", 1) do
-      :eof -> nil
-      "" -> nil
+      :eof ->
+        nil
+
+      "" ->
+        nil
+
       ch ->
         # Slurp escape sequences (arrows etc.)
         if ch == "\e" do

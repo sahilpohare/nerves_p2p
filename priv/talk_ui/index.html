@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" href="data:,">
+  <title>Elixir RPC / Operate</title>
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
+</head>
+<body><!-- DIRECTION CONTRACT | seed:f0ab8f75 | world:medium-native-one-bit-desktop | THESIS: a live capability handoff rendered as a monochrome operator desktop, never a marketing dashboard. | OWN-WORLD: near-white/near-black, ordered pixel dithers, one-pixel chrome, overlapping utility windows. | STORY: watch Iroh discover and verify, Partisan connect, then Horde place locally; run the sequence once. | FIRST VIEWPORT: four-stage rail across the top; topology left, event tape center, selected peer right, RUN DEMO anchored in the command strip. | FORM: medium-native-one-bit-desktop, user-pinned, seed f0ab8f75. -->
+  <header class="menubar">
+    <div class="brand">ELIXIR RPC <span>/ OPERATE</span></div>
+    <div class="connection" id="connection"><span class="signal" aria-hidden="true"></span><span id="connection-text">CONNECTING</span></div>
+  </header>
+
+  <main class="desktop" aria-label="Live technical talk dashboard">
+    <section class="window pipeline-window" aria-labelledby="pipeline-title">
+      <div class="titlebar"><h1 id="pipeline-title">CAPABILITY HANDOFF</h1><span id="run-state">LOADING</span></div>
+      <ol class="pipeline" id="pipeline">
+        <li data-stage="discovery"><span class="stage-number">1</span><strong>IROH DISCOVERY</strong><small>two daemon processes</small></li>
+        <li data-stage="verified"><span class="stage-number">2</span><strong>SIGNATURE VERIFIED</strong><small>authorized fleet record</small></li>
+        <li data-stage="partisan"><span class="stage-number">3</span><strong>PARTISAN ENDPOINT</strong><small>signed LAN handoff</small></li>
+        <li data-stage="horde"><span class="stage-number">4</span><strong>HORDE PLACEMENT</strong><small>local member, by design</small></li>
+      </ol>
+    </section>
+
+    <section class="window topology-window" aria-labelledby="topology-title">
+      <div class="titlebar"><h2 id="topology-title">TOPOLOGY</h2><span>IROH / GOSSIP</span></div>
+      <div class="topology" id="topology">
+        <article class="daemon" data-daemon="finder"><span class="daemon-icon" aria-hidden="true"></span><strong>FINDER DAEMON</strong><code>awaiting identity</code></article>
+        <div class="link" aria-label="Gossip link"><span>FLEET TOPIC</span></div>
+        <article class="daemon" data-daemon="gpu"><span class="daemon-icon dither" aria-hidden="true"></span><strong>GPU DAEMON</strong><code>awaiting identity</code></article>
+      </div>
+    </section>
+
+    <section class="window tape-window" aria-labelledby="tape-title">
+      <div class="titlebar"><h2 id="tape-title">EVENT TAPE</h2><span id="event-count">0 EVENTS</span></div>
+      <div class="tape" id="event-tape" role="log" aria-live="polite" aria-relevant="additions text">
+        <div class="empty-line"><time>--:--:--</time><span>Waiting for the live event stream.</span></div>
+      </div>
+    </section>
+
+    <section class="window peer-window" aria-labelledby="peer-title">
+      <div class="titlebar inverse"><h2 id="peer-title">SELECTED PEER</h2><span id="peer-status">NONE</span></div>
+      <dl class="peer-details" id="peer-details">
+        <div><dt>ENDPOINT</dt><dd>not selected</dd></div>
+        <div><dt>NODE</dt><dd>not selected</dd></div>
+        <div><dt>PARTISAN</dt><dd>not joined</dd></div>
+        <div><dt>CAPABILITY</dt><dd>gpu = required</dd></div>
+        <div><dt>SEQUENCE</dt><dd>not received</dd></div>
+        <div><dt>PLACEMENT</dt><dd>local Horde member</dd></div>
+      </dl>
+    </section>
+
+    <section class="command-window" aria-label="Demo controls">
+      <div class="command-copy">
+        <strong id="command-title">SYSTEM INITIALIZING</strong>
+        <span id="command-detail">Requesting current state from the talk runtime.</span>
+      </div>
+      <button id="run-demo" type="button" disabled><span class="button-mark" aria-hidden="true">&gt;</span><span id="run-label">RUN DEMO</span><kbd>R</kbd></button>
+    </section>
+  </main>
+
+  <div class="sr-only" id="live-status" role="status" aria-live="polite" aria-atomic="true"></div>
+  <noscript>This dashboard requires JavaScript to receive live talk events.</noscript>
+</body>
+</html>

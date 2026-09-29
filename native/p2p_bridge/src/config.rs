@@ -132,8 +132,12 @@ fn get_binary(
     key: &str,
 ) -> Option<Vec<u8>> {
     map.get(key).and_then(|t| {
-        if t.is_atom() { return None; }
-        t.decode::<rustler::Binary>().ok().map(|b| b.as_slice().to_vec())
+        if t.is_atom() {
+            return None;
+        }
+        t.decode::<rustler::Binary>()
+            .ok()
+            .map(|b| b.as_slice().to_vec())
     })
 }
 
@@ -142,23 +146,21 @@ fn get_bool(
     key: &str,
     default: bool,
 ) -> bool {
-    map.get(key).and_then(|t| t.decode::<bool>().ok()).unwrap_or(default)
+    map.get(key)
+        .and_then(|t| t.decode::<bool>().ok())
+        .unwrap_or(default)
 }
 
-fn get_u64(
-    map: &std::collections::HashMap<String, rustler::Term>,
-    key: &str,
-    default: u64,
-) -> u64 {
-    map.get(key).and_then(|t| t.decode::<u64>().ok()).unwrap_or(default)
+fn get_u64(map: &std::collections::HashMap<String, rustler::Term>, key: &str, default: u64) -> u64 {
+    map.get(key)
+        .and_then(|t| t.decode::<u64>().ok())
+        .unwrap_or(default)
 }
 
-fn get_u32(
-    map: &std::collections::HashMap<String, rustler::Term>,
-    key: &str,
-    default: u32,
-) -> u32 {
-    map.get(key).and_then(|t| t.decode::<u32>().ok()).unwrap_or(default)
+fn get_u32(map: &std::collections::HashMap<String, rustler::Term>, key: &str, default: u32) -> u32 {
+    map.get(key)
+        .and_then(|t| t.decode::<u32>().ok())
+        .unwrap_or(default)
 }
 
 fn get_usize(
@@ -172,19 +174,19 @@ fn get_usize(
         .unwrap_or(default)
 }
 
-fn get_f64(
-    map: &std::collections::HashMap<String, rustler::Term>,
-    key: &str,
-    default: f64,
-) -> f64 {
-    map.get(key).and_then(|t| t.decode::<f64>().ok()).unwrap_or(default)
+fn get_f64(map: &std::collections::HashMap<String, rustler::Term>, key: &str, default: f64) -> f64 {
+    map.get(key)
+        .and_then(|t| t.decode::<f64>().ok())
+        .unwrap_or(default)
 }
 
 fn get_peer_score<'a>(
     map: &std::collections::HashMap<String, rustler::Term<'a>>,
 ) -> Option<PeerScoreConfig> {
     let term = map.get("gossipsub_peer_score")?;
-    if term.is_atom() { return None; }
+    if term.is_atom() {
+        return None;
+    }
     let inner: std::collections::HashMap<String, rustler::Term> = term.decode().ok()?;
     Some(PeerScoreConfig {
         ip_colocation_factor_weight: get_f64(&inner, "ip_colocation_factor_weight", -53.0),
@@ -198,7 +200,9 @@ fn get_thresholds<'a>(
     map: &std::collections::HashMap<String, rustler::Term<'a>>,
 ) -> Option<ThresholdsConfig> {
     let term = map.get("gossipsub_thresholds")?;
-    if term.is_atom() { return None; }
+    if term.is_atom() {
+        return None;
+    }
     let inner: std::collections::HashMap<String, rustler::Term> = term.decode().ok()?;
     Some(ThresholdsConfig {
         gossip_threshold: get_f64(&inner, "gossip_threshold", -4000.0),

@@ -265,7 +265,9 @@ defmodule ElixirRpc.P2P.Node do
       {:ok, bytes} ->
         case storage.write(path, bytes) do
           :ok ->
-            Logger.debug("[ElixirRpc.P2P.Node] DHT state exported (#{byte_size(bytes)} bytes) → #{path}")
+            Logger.debug(
+              "[ElixirRpc.P2P.Node] DHT state exported (#{byte_size(bytes)} bytes) → #{path}"
+            )
 
           {:error, reason} ->
             Logger.warning(

@@ -37,6 +37,7 @@ defmodule ElixirRpc.Discovery.DhtProvider do
   require Logger
   alias ElixirRpc.Discovery.PeerInfo
   alias ElixirRpc.DHT
+  alias ElixirRpc.P2P.Node.Event.DHTQueryResult
 
   # Key prefix used for DHT capability records
   @capability_prefix "cap:"
@@ -44,9 +45,13 @@ defmodule ElixirRpc.Discovery.DhtProvider do
   defmodule State do
     @moduledoc false
     defstruct [
-      :node,                # GenServer name/pid of the P2P.Node to use
-      :cached_peers,        # Map of peer_id => PeerInfo
-      :cached_capabilities, # Map of capability => [peer_id]
+      # GenServer name/pid of the P2P.Node to use
+      :node,
+      # Map of peer_id => PeerInfo
+      :cached_peers,
+      # Map of capability => [peer_id]
+      :cached_capabilities,
+      :pending_capabilities,
       :last_publish
     ]
   end
@@ -55,11 +60,13 @@ defmodule ElixirRpc.Discovery.DhtProvider do
   def init(opts) do
     Logger.debug("Initializing DHT discovery provider")
     node = Keyword.get(opts, :node, ElixirRpc.Node)
+    :ok = DHT.register_handler(node)
 
     state = %State{
       node: node,
       cached_peers: %{},
       cached_capabilities: %{},
+      pending_capabilities: [],
       last_publish: nil
     }
 
@@ -118,10 +125,44 @@ defmodule ElixirRpc.Discovery.DhtProvider do
       # to registered handlers. For synchronous calls the coordinator falls back
       # to empty list — callers should subscribe to events for live updates.
       key = @capability_prefix <> to_string(capability)
-      _ = DHT.find_providers(state.node, key)
-      {:ok, fresh_cached, state}
+
+      case DHT.find_providers(state.node, key) do
+        :ok ->
+          {:ok, fresh_cached,
+           %{state | pending_capabilities: state.pending_capabilities ++ [capability]}}
+
+        {:error, reason} ->
+          {:error, reason, state}
+      end
     end
   end
+
+  @impl true
+  def handle_event(
+        %{pending_capabilities: [capability | pending]} = state,
+        %DHTQueryResult{result: {:found_providers, peer_ids}}
+      ) do
+    peers =
+      Map.new(peer_ids, fn peer_id ->
+        {peer_id,
+         %PeerInfo{
+           peer_id: peer_id,
+           capabilities: [capability],
+           last_seen: DateTime.utc_now(),
+           discovery_source: :dht
+         }}
+      end)
+
+    {:ok,
+     %{
+       state
+       | cached_peers: Map.merge(state.cached_peers, peers),
+         cached_capabilities: Map.put(state.cached_capabilities, capability, peer_ids),
+         pending_capabilities: pending
+     }}
+  end
+
+  def handle_event(state, _event), do: {:ok, state}
 
   @impl true
   def find_peer(state, node_name) do
@@ -151,5 +192,4 @@ defmodule ElixirRpc.Discovery.DhtProvider do
 
     {peers, state}
   end
-
 end

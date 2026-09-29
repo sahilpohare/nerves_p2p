@@ -1,7 +1,7 @@
 defmodule ElixirRpc.ExamplesTest do
   use ExUnit.Case, async: true
 
-  test "library examples remain valid and atom-safe" do
+  test "P[library examples exist] C[parse and inspect them] Q[source is valid and atom-safe]" do
     for path <- ["examples/capabilities.exs", "examples/start_child.exs"] do
       source = File.read!(path)
 

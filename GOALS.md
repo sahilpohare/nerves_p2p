@@ -1,45 +1,28 @@
-Phase 1: Bare PoC
+# Milestones
 
-This phase removes hardware and networking variables to focus entirely on proving the core software thesis on a local, trusted network.
+## 1. Local Proof
 
-    Replace standard Erlang distribution with Partisan running in a simple full-mesh topology.
+- Exchange signed capability records between two Iroh endpoints.
+- Select a peer by typed constraints and load.
+- Join the selected peer's signed LAN endpoint through Partisan.
+- Place one uniquely identified child through Horde.
+- Recover when the selected peer exits.
 
-    Implement KademliaDHT with a single seed node on the local network for node discovery.
+## 2. Physical Devices
 
-    Develop the Network.spawn/2 API to route workloads based on simulated node capabilities rather than physical hardware.
+- Deploy to 3-5 Nerves devices.
+- Persist endpoint identity and sequence watermarks.
+- Advertise GPU, VRAM, storage and battery metadata.
+- Dispatch one VLM inference from a constrained node to a GPU node.
 
-    Run the nodes locally on a single machine or across basic, homogeneous Linux VMs to prove the OTP fault tolerance and routing logic works.
+## 3. Difficult Networks
 
-Extension 1: Heterogeneous Physical Hardware
+- Run the same demo across NAT using Iroh direct connections or relay fallback.
+- Measure discovery, join and placement latency.
+- Verify recovery after network partitions.
 
-Once the software architecture is proven, introduce the physical Nerves devices and capability differences.
+## 4. Scale
 
-    Deploy Nerves firmware to a small testbed of 3–5 physical devices.
-
-    Include a mix of standard nodes (Raspberry Pi 4) and at least one GPU-capable node.
-
-    Have devices publish actual hardware capabilities (GPU VRAM, storage, battery level) to the DHT on boot.
-
-    Execute the end-to-end demo where a constrained node successfully dispatches a Vision Language Model (VLM) inference task to the GPU node.
-
-Extension 2: NAT Traversal and Complex Networking
-
-With physical hardware collaborating on a LAN, introduce the complexities of real-world edge networks.
-
-    Set up the Carrier-Grade NAT (CGNAT) simulator to isolate the devices.
-
-    Implement AutoNAT probing to determine the NAT type upon device startup.
-
-    Attempt Direct Connection Upgrade through Relay (DCUTR) simultaneous open for hole punching.
-
-    Implement the circuit relay fallback mechanism through a mesh node with public reachability to ensure the system survives when hole punching fails.
-
-Extension 3: Scale and Security (Stretch Goals for August)
-
-If you clear the networking hurdles early, you can pull in features from your "Stage 2" production plan.
-
-    Switch Partisan from a full-mesh topology to the HyParView gossip protocol to demonstrate O(logn) scaling capabilities.
-
-    Upgrade the DHT bootstrap from a single node to a redundant seed cluster of 3 nodes.
-
-    Implement security by requiring capability records to be signed with device keys, rejecting any unsigned records.
+- Keep Partisan on bounded HyParView active and passive views as the fleet grows.
+- Measure convergence, churn recovery, routing stretch and per-node resources.
+- Add a DHT index only when fleet-wide Iroh gossip is a demonstrated limit.

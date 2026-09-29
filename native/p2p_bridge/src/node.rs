@@ -4,13 +4,13 @@ use crate::events::handle_swarm_event;
 
 use futures::{FutureExt, StreamExt};
 use libp2p::{
-    autonat, connection_limits, dcutr, gossipsub, identify, identity::Keypair, kad,
-    mdns, memory_connection_limits, noise, ping, relay, rendezvous, request_response,
-    swarm::SwarmEvent, tcp, upnp, yamux, Multiaddr, PeerId, StreamProtocol,
+    Multiaddr, PeerId, StreamProtocol, autonat, connection_limits, dcutr, gossipsub, identify,
+    identity::Keypair, kad, mdns, memory_connection_limits, noise, ping, relay, rendezvous,
+    request_response, swarm::SwarmEvent, tcp, upnp, yamux,
 };
 use rustler::{LocalPid, ResourceArc};
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -30,7 +30,9 @@ fn get_runtime() -> Result<&'static Runtime, String> {
         .build()
         .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
     let _ = RUNTIME.set(rt);
-    RUNTIME.get().ok_or_else(|| "Tokio runtime initialization race failed".to_string())
+    RUNTIME
+        .get()
+        .ok_or_else(|| "Tokio runtime initialization race failed".to_string())
 }
 
 pub struct NodeHandle {
@@ -82,7 +84,9 @@ pub fn start_node_inner(
     };
 
     let gossipsub_config = gossipsub::ConfigBuilder::default()
-        .heartbeat_interval(Duration::from_millis(config.gossipsub_heartbeat_interval_ms))
+        .heartbeat_interval(Duration::from_millis(
+            config.gossipsub_heartbeat_interval_ms,
+        ))
         .validation_mode(gossipsub::ValidationMode::Strict)
         .message_id_fn(message_id_fn)
         .mesh_n(config.gossipsub_mesh_n)
@@ -167,11 +171,10 @@ pub fn start_node_inner(
     let rpc_config = request_response::Config::default()
         .with_request_timeout(Duration::from_secs(config.rpc_request_timeout_secs));
 
-    let request_response_behaviour =
-        request_response::cbor::Behaviour::<Vec<u8>, Vec<u8>>::new(
-            [(rpc_protocol, request_response::ProtocolSupport::Full)],
-            rpc_config,
-        );
+    let request_response_behaviour = request_response::cbor::Behaviour::<Vec<u8>, Vec<u8>>::new(
+        [(rpc_protocol, request_response::ProtocolSupport::Full)],
+        rpc_config,
+    );
 
     let idle_timeout = Duration::from_secs(config.idle_connection_timeout_secs);
 
@@ -195,7 +198,11 @@ pub fn start_node_inner(
     };
 
     let autonat_behaviour = if config.enable_autonat {
-        Some(autonat::Behaviour::new(local_peer_id, autonat::Config::default())).into()
+        Some(autonat::Behaviour::new(
+            local_peer_id,
+            autonat::Config::default(),
+        ))
+        .into()
     } else {
         None.into()
     };
@@ -222,7 +229,10 @@ pub fn start_node_inner(
     };
 
     let rendezvous_server_behaviour = if config.enable_rendezvous_server {
-        Some(rendezvous::server::Behaviour::new(rendezvous::server::Config::default())).into()
+        Some(rendezvous::server::Behaviour::new(
+            rendezvous::server::Config::default(),
+        ))
+        .into()
     } else {
         None.into()
     };
@@ -234,7 +244,11 @@ pub fn start_node_inner(
 
     let mut swarm = libp2p::SwarmBuilder::with_existing_identity(keypair)
         .with_tokio()
-        .with_tcp(tcp::Config::default().nodelay(true), noise::Config::new, yamux::Config::default)
+        .with_tcp(
+            tcp::Config::default().nodelay(true),
+            noise::Config::new,
+            yamux::Config::default,
+        )
         .map_err(|e| format!("tcp transport: {e}"))?
         .with_quic()
         .with_dns()
@@ -287,10 +301,9 @@ pub fn start_node_inner(
 
     let mdns_auto_dial = config.mdns_auto_dial;
     runtime.spawn(async move {
-        let result =
-            std::panic::AssertUnwindSafe(swarm_loop(swarm, cmd_rx, mdns_auto_dial))
-                .catch_unwind()
-                .await;
+        let result = std::panic::AssertUnwindSafe(swarm_loop(swarm, cmd_rx, mdns_auto_dial))
+            .catch_unwind()
+            .await;
         if let Err(e) = result {
             tracing::error!("swarm loop panicked: {e:?}");
         }

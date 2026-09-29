@@ -7,22 +7,56 @@ defmodule ElixirRpc.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      ElixirRpc.P2P.Supervisor,
-      ElixirRpc.Telemetry.Counters,
-      # Main libp2p node — registered as ElixirRpc.Node for the whole app
-      {ElixirRpc.P2P.Node, name: ElixirRpc.Node, enable_mdns: true, enable_kademlia: true},
-      # Handles inbound OTP distribution requests from remote peers
-      {ElixirRpc.OTP.Distribution.Server, node: ElixirRpc.Node},
-      # Handles inbound capability-based RPC apply calls
-      ElixirRpc.CapabilityRPC.Server,
-      ElixirRpc.PeerManager,
-      {Horde.Registry, name: ElixirRpc.Registry, keys: :unique, members: {:auto, Horde.NodeListener.Partisan}, transport: Horde.ClusterTransport.Partisan},
-      {Horde.DynamicSupervisor, name: ElixirRpc.DynamicSupervisor, strategy: :one_for_one, members: {:auto, Horde.NodeListener.Partisan}, distribution_strategy: ElixirRpc.Network.CapabilityDistributionStrategy},
-      ElixirRpc.Network.ModuleRegistry
-    ] ++ target_children()
+    children =
+      network_children(Application.get_env(:elixir_rpc, :network_mode, :legacy)) ++
+        [
+          ElixirRpc.Telemetry.Counters,
+          {Horde.Registry,
+           name: ElixirRpc.Registry,
+           keys: :unique,
+           members: {:auto, Horde.NodeListener.Partisan},
+           transport: Horde.ClusterTransport.Partisan},
+          {Horde.DynamicSupervisor,
+           name: ElixirRpc.DynamicSupervisor,
+           strategy: :one_for_one,
+           members: {:auto, Horde.NodeListener.Partisan},
+           distribution_strategy: ElixirRpc.Network.CapabilityDistributionStrategy},
+          ElixirRpc.Network.ModuleRegistry
+        ] ++ target_children()
 
     Supervisor.start_link(children, strategy: :one_for_one, name: ElixirRpc.Supervisor)
+  end
+
+  defp network_children(:legacy) do
+    [
+      ElixirRpc.P2P.Supervisor,
+      {ElixirRpc.P2P.Node, name: ElixirRpc.Node, enable_mdns: true, enable_kademlia: true},
+      ElixirRpc.Discovery,
+      {ElixirRpc.OTP.Distribution.Server, node: ElixirRpc.Node},
+      ElixirRpc.CapabilityRPC.Server,
+      ElixirRpc.PeerManager
+    ]
+  end
+
+  defp network_children(:iroh) do
+    [{ElixirRpc.IrohDiscovery.Port, iroh_options()}] ++ talk_worker_children()
+  end
+
+  defp talk_worker_children do
+    case Application.get_env(:elixir_rpc, :talk_worker, false) do
+      true -> [ElixirRpc.TalkWorker]
+      opts when is_list(opts) -> talk_worker_children(Keyword.pop(opts, :enabled, true))
+      false -> []
+    end
+  end
+
+  defp talk_worker_children({true, opts}), do: [{ElixirRpc.TalkWorker, opts}]
+  defp talk_worker_children({false, _opts}), do: []
+
+  defp iroh_options do
+    :elixir_rpc
+    |> Application.fetch_env!(:iroh_discovery)
+    |> Keyword.put_new(:name, ElixirRpc.IrohDiscovery)
   end
 
   if Mix.target() == :host do
@@ -48,8 +82,7 @@ defmodule ElixirRpc.Application do
     defp receive_loop do
       receive do
         {VintageNet, ["interface", _ifname, "connection"], _old, :internet, _meta} ->
-          Logger.info("Network up — triggering Partisan mDNS peer discovery")
-          :partisan_peer_discovery.discover()
+          Logger.info("Network up; Iroh discovery will refresh addresses in the background")
           receive_loop()
 
         _ ->

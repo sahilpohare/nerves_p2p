@@ -155,10 +155,23 @@ defmodule ElixirRpc.P2P.Node.Config do
           enable_rendezvous_server: boolean()
         }
 
-  @network_keys [:listen_addrs, :idle_connection_timeout_secs, :max_established_per_peer,
-                 :max_established_incoming, :max_established_outgoing,
-                 :max_pending_incoming, :max_pending_outgoing, :memory_max_percentage]
-  @discovery_keys [:enable_mdns, :mdns_auto_dial, :enable_kademlia, :bootstrap_peers, :dht_state_path]
+  @network_keys [
+    :listen_addrs,
+    :idle_connection_timeout_secs,
+    :max_established_per_peer,
+    :max_established_incoming,
+    :max_established_outgoing,
+    :max_pending_incoming,
+    :max_pending_outgoing,
+    :memory_max_percentage
+  ]
+  @discovery_keys [
+    :enable_mdns,
+    :mdns_auto_dial,
+    :enable_kademlia,
+    :bootstrap_peers,
+    :dht_state_path
+  ]
   @gossipsub_renames %{
     gossipsub_topics: :topics,
     gossipsub_mesh_n: :mesh_n,
@@ -175,12 +188,23 @@ defmodule ElixirRpc.P2P.Node.Config do
     rpc_protocol_name: :protocol_name,
     rpc_request_timeout_secs: :request_timeout_secs
   }
-  @relay_keys [:enable_relay_client, :enable_relay_server, :relay_peers,
-               :relay_max_reservations, :relay_max_circuits,
-               :relay_max_circuit_duration_secs, :relay_max_circuit_bytes]
+  @relay_keys [
+    :enable_relay_client,
+    :enable_relay_server,
+    :relay_peers,
+    :relay_max_reservations,
+    :relay_max_circuits,
+    :relay_max_circuit_duration_secs,
+    :relay_max_circuit_bytes
+  ]
   @rendezvous_keys [:enable_rendezvous, :rendezvous_namespace, :rendezvous_ttl, :rendezvous_peers]
-  @protocol_keys [:enable_autonat, :enable_autonat_server, :enable_upnp, :enable_websocket,
-                  :enable_rendezvous_server]
+  @protocol_keys [
+    :enable_autonat,
+    :enable_autonat_server,
+    :enable_upnp,
+    :enable_websocket,
+    :enable_rendezvous_server
+  ]
   @known_keys [:keypair_bytes] ++
                 @network_keys ++
                 @discovery_keys ++

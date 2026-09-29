@@ -70,6 +70,10 @@ defmodule ElixirRpc.MixProject do
       # TUI
       {:owl, "~> 0.13"},
 
+      # Talk dashboard
+      {:plug, "~> 1.16"},
+      {:bandit, "~> 1.6"},
+
       # Rust NIF bridge
       {:rustler, "~> 0.36", runtime: false},
 

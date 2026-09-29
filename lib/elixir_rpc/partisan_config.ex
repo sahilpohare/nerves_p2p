@@ -20,11 +20,14 @@ defmodule ElixirRpc.PartisanConfig do
     node_name = :"#{peer_id}@#{hostname}"
 
     case :net_kernel.start([node_name, :longnames]) do
-      {:ok, _} -> Logger.info("Node started: #{inspect(node_name)}")
+      {:ok, _} ->
+        Logger.info("Node started: #{inspect(node_name)}")
+
       {:error, {:already_started, _}} ->
         :net_kernel.stop()
         :net_kernel.start([node_name, :longnames])
         Logger.info("Node restarted: #{inspect(node_name)}")
+
       {:error, reason} ->
         Logger.warning("Failed to start net_kernel: #{inspect(reason)}")
     end
@@ -45,8 +48,11 @@ defmodule ElixirRpc.PartisanConfig do
       Logger.info("Partisan runtime config: node=#{node_name} port=#{port}")
     else
       case :partisan_config.get(:listen_addrs) do
-        [%{ip: ip, port: p} | _] -> Logger.info("Partisan runtime config: node=#{node_name} port=#{inspect(ip)}:#{p}")
-        _ -> Logger.warning("Partisan listen addresses not configured")
+        [%{ip: ip, port: p} | _] ->
+          Logger.info("Partisan runtime config: node=#{node_name} port=#{inspect(ip)}:#{p}")
+
+        _ ->
+          Logger.warning("Partisan listen addresses not configured")
       end
     end
   end
@@ -61,9 +67,11 @@ defmodule ElixirRpc.PartisanConfig do
         case :partisan_config.get(:listen_addrs, []) do
           [%{port: current} | _] ->
             Logger.info("Updating Partisan port from #{current} to #{inspect(ip)}:#{port}")
+
           _ ->
             Logger.info("Setting Partisan to use libp2p port: #{inspect(ip)}:#{port}")
         end
+
         :partisan_config.set(:listen_addrs, [%{ip: ip, port: port}])
 
       {:error, reason} ->
@@ -172,19 +180,6 @@ defmodule ElixirRpc.PartisanConfig do
   end
 
   @doc """
-  Send a message to a peer using Partisan's forward_message.
-
-  This bypasses Distributed Erlang and uses Partisan's overlay network.
-  """
-  def send_message(peer_name, message) do
-    :partisan_peer_service.message(
-      peer_name,
-      message,
-      []
-    )
-  end
-
-  @doc """
   Broadcast a message to all members using Partisan's broadcast tree.
   """
   def broadcast(message, opts \\ []) do
@@ -265,7 +260,9 @@ defmodule ElixirRpc.PartisanConfig do
 
   defp wait_for_peer_id(retries, delay) do
     case ElixirRpc.Libp2pBridge.get_peer_id() do
-      peer_id when is_binary(peer_id) -> peer_id
+      peer_id when is_binary(peer_id) ->
+        peer_id
+
       _ ->
         Process.sleep(delay)
         wait_for_peer_id(retries - 1, delay)
@@ -276,7 +273,9 @@ defmodule ElixirRpc.PartisanConfig do
 
   defp wait_for_libp2p_port(retries, delay) do
     case ElixirRpc.Libp2pBridge.get_listen_addrs() do
-      addrs when is_list(addrs) and addrs != [] -> addrs
+      addrs when is_list(addrs) and addrs != [] ->
+        addrs
+
       _ ->
         Process.sleep(delay)
         wait_for_libp2p_port(retries - 1, delay)

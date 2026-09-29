@@ -38,6 +38,7 @@ defmodule ElixirRpc.Network.ModuleRegistry do
     case Horde.Registry.register(@registry, {node(), :modules}, modules) do
       {:ok, _} ->
         Logger.info("ModuleRegistry: advertised #{MapSet.size(modules)} modules for #{node()}")
+
       {:error, {:already_registered, _}} ->
         Horde.Registry.unregister(@registry, {node(), :modules})
         Horde.Registry.register(@registry, {node(), :modules}, modules)

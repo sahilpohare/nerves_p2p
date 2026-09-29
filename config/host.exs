@@ -27,8 +27,14 @@ config :nerves_runtime,
 
 # Partisan configuration for development
 config :partisan,
-  peer_service_manager: :partisan_pluggable_peer_service_manager,
-  partisan_peer_service_manager: :partisan_hyparview_peer_service_manager,
+  peer_service_manager: :partisan_hyparview_peer_service_manager,
+  hyparview: [
+    active_min_size: 3,
+    active_max_size: 6,
+    passive_max_size: 30,
+    shuffle_interval: 10_000,
+    random_promotion_interval: 5_000
+  ],
   channels: [:membership, :rpc, :discovery],
   broadcast: true,
   connection_jitter: 1000,

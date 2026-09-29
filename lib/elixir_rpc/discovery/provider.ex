@@ -80,6 +80,7 @@ defmodule ElixirRpc.Discovery.Provider do
               {peers :: list(PeerInfo.t()), state :: term()}
 
   @callback scan(state :: term()) :: {:ok, new_state :: term()} | {:error, reason :: term()}
+  @callback handle_event(state :: term(), event :: term()) :: {:ok, new_state :: term()}
 
-  @optional_callbacks [scan: 1]
+  @optional_callbacks scan: 1, handle_event: 2
 end

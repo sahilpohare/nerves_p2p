@@ -3,7 +3,9 @@ defmodule ElixirRpc.P2P.Native.Nif do
 
   @behaviour ElixirRpc.P2P.Native
 
-  use Rustler, otp_app: :elixir_rpc, crate: "p2p_bridge"
+  if Mix.target() == :host do
+    use Rustler, otp_app: :elixir_rpc, crate: "p2p_bridge"
+  end
 
   # Fallback stubs — overwritten by Rustler when the NIF loads successfully.
 

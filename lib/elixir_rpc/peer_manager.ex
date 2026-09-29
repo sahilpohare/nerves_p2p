@@ -116,12 +116,7 @@ defmodule ElixirRpc.PeerManager do
 
   @impl true
   def handle_info(:discover, state) do
-    Logger.debug("Running Partisan peer discovery scan...")
-    # Trigger Partisan's own mDNS-based discovery (works on target).
-    # libp2p peer discovery flows in via {:libp2p, :peer_discovered, event} messages.
-    if function_exported?(:partisan_peer_discovery, :discover, 0) do
-      :partisan_peer_discovery.discover()
-    end
+    Logger.debug("Waiting for libp2p peer discovery events...")
 
     discovery_timer = Process.send_after(self(), :discover, @discovery_interval)
     {:noreply, %{state | discovery_timer: discovery_timer}}

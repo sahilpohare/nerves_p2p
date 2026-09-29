@@ -27,7 +27,9 @@ pub fn encode(entries: &[RoutingEntry]) -> Vec<u8> {
         + 4
         + entries
             .iter()
-            .map(|e| 2 + e.peer_id.len() + 2 + e.addresses.iter().map(|a| 2 + a.len()).sum::<usize>())
+            .map(|e| {
+                2 + e.peer_id.len() + 2 + e.addresses.iter().map(|a| 2 + a.len()).sum::<usize>()
+            })
             .sum::<usize>();
     let mut buf = Vec::with_capacity(est);
 
@@ -100,7 +102,10 @@ impl<'a> Cursor<'a> {
 
     fn read_array<const N: usize>(&mut self) -> Result<[u8; N], DhtStateError> {
         if self.offset + N > self.buf.len() {
-            return Err(DhtStateError::Truncated { offset: self.offset, need: N });
+            return Err(DhtStateError::Truncated {
+                offset: self.offset,
+                need: N,
+            });
         }
         let mut out = [0u8; N];
         out.copy_from_slice(&self.buf[self.offset..self.offset + N]);
@@ -122,7 +127,10 @@ impl<'a> Cursor<'a> {
 
     fn read_vec(&mut self, n: usize) -> Result<Vec<u8>, DhtStateError> {
         if self.offset + n > self.buf.len() {
-            return Err(DhtStateError::Truncated { offset: self.offset, need: n });
+            return Err(DhtStateError::Truncated {
+                offset: self.offset,
+                need: n,
+            });
         }
         let v = self.buf[self.offset..self.offset + n].to_vec();
         self.offset += n;

@@ -27,7 +27,8 @@ defmodule ElixirRpc.Keypair do
   def generate do
     case native_module().generate_keypair() do
       {:ok, public_key, peer_id, protobuf_bytes} ->
-        {:ok, %__MODULE__{public_key: public_key, peer_id: peer_id, protobuf_bytes: protobuf_bytes}}
+        {:ok,
+         %__MODULE__{public_key: public_key, peer_id: peer_id, protobuf_bytes: protobuf_bytes}}
 
       {:error, reason} ->
         {:error, reason}

@@ -35,7 +35,8 @@ defmodule Mix.Tasks.Tui do
       ElixirRpc.TUI.run()
     after
       set_raw_mode(false)
-      IO.write("\e[?25h")  # restore cursor
+      # restore cursor
+      IO.write("\e[?25h")
     end
   end
 

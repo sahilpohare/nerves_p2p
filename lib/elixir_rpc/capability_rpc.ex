@@ -87,7 +87,9 @@ defmodule ElixirRpc.CapabilityRPC do
 
   defp select_peer({:capability, cap}), do: pick_first(cap, %{})
   defp select_peer({:capability, cap, :load_balanced}), do: pick_load_balanced(cap)
-  defp select_peer({:capability, cap, constraints}) when is_map(constraints), do: pick_first(cap, constraints)
+
+  defp select_peer({:capability, cap, constraints}) when is_map(constraints),
+    do: pick_first(cap, constraints)
 
   defp pick_first(capability, constraints) do
     case Discovery.find_capability(capability) do

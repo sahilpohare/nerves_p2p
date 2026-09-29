@@ -1,5 +1,18 @@
 import Config
 
+fleet_id = System.get_env("IROH_FLEET_ID", String.duplicate("07", 32))
+iroh_node_name = System.get_env("IROH_NODE_NAME", "gpu@nerves.local")
+
+config :elixir_rpc,
+  network_mode: :iroh,
+  talk_worker: [enabled: true, start_distribution: true, capabilities: %{"gpu" => true}]
+
+config :elixir_rpc, :iroh_discovery,
+  executable: "/usr/bin/iroh_discovery_port",
+  data_dir: "/data/iroh",
+  fleet_id: fleet_id,
+  node_name: iroh_node_name
+
 # Use Ringlogger as the logger backend and remove :console.
 # See https://hexdocs.pm/ring_logger/readme.html for more information on
 # configuring ring_logger.
@@ -104,14 +117,18 @@ config :mdns_lite,
 
 # Partisan configuration for embedded targets
 config :partisan,
-  peer_service_manager: :partisan_pluggable_peer_service_manager,
-  partisan_peer_service_manager: :partisan_hyparview_peer_service_manager,
+  peer_service_manager: :partisan_hyparview_peer_service_manager,
+  hyparview: [
+    active_min_size: 3,
+    active_max_size: 6,
+    passive_max_size: 30,
+    shuffle_interval: 10_000,
+    random_promotion_interval: 5_000
+  ],
   channels: [:membership, :rpc, :discovery, :capabilities],
   broadcast: true,
   periodic_interval: 10_000,
   connection_jitter: 5000,
-  min_active_size: 3,
-  max_active_size: 6,
   tls: false,
   listen_addrs: [%{ip: {0, 0, 0, 0}, port: 10200}],
   parallelism: 4,

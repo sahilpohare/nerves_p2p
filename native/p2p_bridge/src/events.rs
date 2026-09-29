@@ -1,7 +1,7 @@
 use crate::atoms;
 use crate::behaviour::NodeBehaviourEvent;
-use libp2p::swarm::SwarmEvent;
 use libp2p::PeerId;
+use libp2p::swarm::SwarmEvent;
 use rustler::{Encoder, Env, LocalPid, OwnedEnv, Term};
 
 /// Translates SwarmEvents into Elixir terms and sends them to the registered PID.
@@ -109,9 +109,7 @@ pub fn handle_swarm_event(event: SwarmEvent<NodeBehaviourEvent>, pid: &LocalPid)
         }
 
         // Kademlia
-        SwarmEvent::Behaviour(NodeBehaviourEvent::Kademlia(event)) => {
-            encode_kad_event(env, event)
-        }
+        SwarmEvent::Behaviour(NodeBehaviourEvent::Kademlia(event)) => encode_kad_event(env, event),
 
         // Request-response failure events (success events handled in swarm_loop)
         SwarmEvent::Behaviour(NodeBehaviourEvent::RequestResponse(
@@ -185,9 +183,7 @@ pub fn handle_swarm_event(event: SwarmEvent<NodeBehaviourEvent>, pid: &LocalPid)
 
         // Relay client
         SwarmEvent::Behaviour(NodeBehaviourEvent::RelayClient(
-            libp2p::relay::client::Event::ReservationReqAccepted {
-                relay_peer_id, ..
-            },
+            libp2p::relay::client::Event::ReservationReqAccepted { relay_peer_id, .. },
         )) => (
             atoms::libp2p_event(),
             (
@@ -199,9 +195,9 @@ pub fn handle_swarm_event(event: SwarmEvent<NodeBehaviourEvent>, pid: &LocalPid)
             .encode(env),
 
         // UPnP
-        SwarmEvent::Behaviour(NodeBehaviourEvent::Upnp(
-            libp2p::upnp::Event::NewExternalAddr(addr),
-        )) => (
+        SwarmEvent::Behaviour(NodeBehaviourEvent::Upnp(libp2p::upnp::Event::NewExternalAddr(
+            addr,
+        ))) => (
             atoms::libp2p_event(),
             (atoms::external_addr_confirmed(), addr.to_string()),
         )
@@ -238,7 +234,10 @@ pub fn handle_swarm_event(event: SwarmEvent<NodeBehaviourEvent>, pid: &LocalPid)
                         .unwrap_or_else(|| atoms::nil().encode(env));
                     (atoms::libp2p_event(), peer).encode(env)
                 }
-                _ => (atoms::libp2p_event(), (atoms::peers_discovered(), encoded_peers))
+                _ => (
+                    atoms::libp2p_event(),
+                    (atoms::peers_discovered(), encoded_peers),
+                )
                     .encode(env),
             }
         }
@@ -333,9 +332,9 @@ pub fn send_outbound_response(pid: &LocalPid, peer: &PeerId, request_id: &str, d
 fn encode_kad_event(env: Env, event: libp2p::kad::Event) -> Term {
     match event {
         libp2p::kad::Event::OutboundQueryProgressed { result, id, .. } => match result {
-            libp2p::kad::QueryResult::GetRecord(Ok(
-                libp2p::kad::GetRecordOk::FoundRecord(libp2p::kad::PeerRecord { record, .. }),
-            )) => (
+            libp2p::kad::QueryResult::GetRecord(Ok(libp2p::kad::GetRecordOk::FoundRecord(
+                libp2p::kad::PeerRecord { record, .. },
+            ))) => (
                 atoms::libp2p_event(),
                 (
                     atoms::dht_query_result(),
@@ -351,7 +350,11 @@ fn encode_kad_event(env: Env, event: libp2p::kad::Event) -> Term {
 
             libp2p::kad::QueryResult::GetRecord(Err(_)) => (
                 atoms::libp2p_event(),
-                (atoms::dht_query_result(), format!("{id:?}"), atoms::not_found()),
+                (
+                    atoms::dht_query_result(),
+                    format!("{id:?}"),
+                    atoms::not_found(),
+                ),
             )
                 .encode(env),
 

@@ -1,5 +1,28 @@
 import Config
 
+network_mode =
+  case System.get_env("ELIXIR_RPC_NETWORK_MODE") do
+    "iroh" -> :iroh
+    "legacy" -> :legacy
+    _ -> Application.get_env(:elixir_rpc, :network_mode, :legacy)
+  end
+
+config :elixir_rpc, network_mode: network_mode
+
+if network_mode == :iroh do
+  configured = Application.get_env(:elixir_rpc, :iroh_discovery, [])
+
+  config :elixir_rpc, :iroh_discovery,
+    executable:
+      System.get_env("IROH_DISCOVERY_BIN") ||
+        Keyword.get(configured, :executable, "/usr/bin/iroh_discovery_port"),
+    data_dir:
+      System.get_env("IROH_DISCOVERY_DATA_DIR") ||
+        Keyword.get(configured, :data_dir, "/data/iroh"),
+    fleet_id: System.get_env("IROH_FLEET_ID") || Keyword.fetch!(configured, :fleet_id),
+    node_name: System.get_env("IROH_NODE_NAME") || Keyword.fetch!(configured, :node_name)
+end
+
 get_available_port = fn ->
   {:ok, socket} = :gen_tcp.listen(0, [:binary, {:active, false}, {:reuseaddr, true}])
   {:ok, port} = :inet.port(socket)
@@ -35,7 +58,8 @@ if config_env() == :prod and Application.get_env(:nerves, :target) != :host do
       _ -> "localhost"
     end
 
-  node_name = generate_node_name.(hostname)
+  iroh_config = Application.get_env(:elixir_rpc, :iroh_discovery, [])
+  node_name = iroh_config |> Keyword.get(:node_name, "gpu@#{hostname}") |> String.to_atom()
 
   config :partisan,
     name: node_name,

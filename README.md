@@ -1,33 +1,61 @@
-# ElixirRpc
+# Elixir RPC
 
-**TODO: Add description**
+Capability-based process placement for Nerves devices.
 
-## Targets
+The project has three layers:
 
-Nerves applications produce images for hardware targets based on the
-`MIX_TARGET` environment variable. If `MIX_TARGET` is unset, `mix` builds an
-image that runs on the host (e.g., your laptop). This is useful for executing
-logic tests, running utilities, and debugging. Other targets are represented by
-a short name like `rpi3` that maps to a Nerves system image for that platform.
-All of this logic is in the generated `mix.exs` and may be customized. For more
-information about targets see:
+- **Iroh** discovers authorized devices and their capabilities before joining.
+- **Partisan** provides membership and message transport between BEAM nodes.
+- **Horde** owns distributed registry and process supervision.
 
-https://hexdocs.pm/nerves/supported-targets.html
+See `ARCHITECTURE.md` for boundaries and `IROH_CAPABILITY_PROTOCOL.md` for the
+signed discovery protocol. Older libp2p documents describe the implementation
+being replaced and are not architecture references.
 
-## Getting Started
+## Current Status
 
-To start your Nerves app:
-  * `export MIX_TARGET=my_target` or prefix every command with
-    `MIX_TARGET=my_target`. For example, `MIX_TARGET=rpi3`
-  * Install dependencies with `mix deps.get`
-  * Create firmware with `mix firmware`
-  * Burn to an SD card with `mix burn`
+- Horde starts over its merged Partisan transport adapters.
+- Capability-selected Horde placement and bounded handoff are tested.
+- Iroh capability records have four Hoare-contract tests.
+- Two local Iroh endpoints exchange and verify a capability announcement.
+- The existing libp2p runtime remains active until the Iroh Port and Partisan
+  tunnel are proven end to end.
 
-## Learn more
+## Development
 
-  * Official docs: https://hexdocs.pm/nerves/getting-started.html
-  * Official website: https://nerves-project.org/
-  * Forum: https://elixirforum.com/c/nerves-forum
-  * Elixir Slack #nerves channel: https://elixir-slack.community/
-  * Elixir Discord #nerves channel: https://discord.gg/elixir
-  * Source: https://github.com/nerves-project/nerves
+```bash
+mix deps.get
+mix test
+
+cd native/iroh_discovery
+cargo test
+```
+
+## Talk Demo
+
+```bash
+cargo build --manifest-path native/iroh_discovery/Cargo.toml
+mix talk.demo
+```
+
+The command runs two real Iroh daemon processes for signed capability discovery,
+then demonstrates the selected child specification through local Horde. It
+labels local placement explicitly; remote Partisan/Horde placement is the next
+demo milestone.
+
+### Browser Dashboard
+
+```bash
+mix talk.ui
+# open http://127.0.0.1:4000
+```
+
+Pass a different port with `mix talk.ui 4100`. Press `R` or select **Run Demo**
+to stream the real discovery and placement stages into the dashboard.
+
+For the laptop plus Nerves Raspberry Pi 4 sequence, follow `TALK_RUNBOOK.md`.
+
+## Target Demo
+
+A constrained Nerves node discovers a GPU node by signed capability metadata,
+establishes connectivity, and asks Horde to place a VLM worker on that node.

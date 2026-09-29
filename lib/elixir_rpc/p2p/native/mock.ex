@@ -119,8 +119,10 @@ defmodule ElixirRpc.P2P.Native.Mock do
   @impl ElixirRpc.P2P.Native
   def generate_keypair do
     id = System.unique_integer([:positive])
+
     peer_id =
       "12D3KooW#{String.pad_leading("#{id}", 44, "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrs")}"
+
     {:ok, "mock-pubkey-#{id}", peer_id, "mock-proto:#{peer_id}"}
   end
 

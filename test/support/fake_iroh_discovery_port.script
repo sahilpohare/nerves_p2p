@@ -32,13 +32,13 @@ defmodule FakeIrohDiscoveryPort do
 
   defp handle("events", request, []) do
     event(~s({"event":"dist_incoming","stream_id":7,"from_node":"a@local","target_node":"b@local"}))
+    respond(request)
     loop("events", [request])
   end
 
-  defp handle("events", second, [first]) do
+  defp handle("events", second, [_first]) do
     respond(second)
     event(~s({"event":"dist_credit","stream_id":7,"bytes":3}))
-    respond(first)
     loop("normal", [])
   end
 
@@ -78,6 +78,7 @@ defmodule FakeIrohDiscoveryPort do
               "unauthorized",
               "invalid_endpoint",
               "handoff",
+              "pitch_peer",
               "remote_success",
               "remote_timeout"
             ] do
@@ -135,6 +136,7 @@ defmodule FakeIrohDiscoveryPort do
   defp peers("unauthorized", _peer_name, _request), do: peer("stranger@host", "127.0.0.1", 10_200)
   defp peers("invalid_endpoint", peer_name, _request), do: peer(peer_name, "not-an-ip", 10_200)
   defp peers("handoff", peer_name, _request), do: peer(peer_name, "127.0.0.1", 10_200)
+  defp peers("pitch_peer", peer_name, _request), do: peer(peer_name, "127.0.0.1", 10_200)
 
   defp peer(node_name, ip, port) do
     ~s([{"node_name":"#{node_name}","partisan_ip":"#{ip}","partisan_port":#{port}}])

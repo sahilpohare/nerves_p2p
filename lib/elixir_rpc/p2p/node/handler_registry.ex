@@ -128,7 +128,10 @@ defmodule ElixirRpc.P2P.Node.HandlerRegistry do
 
   @impl true
   def format_status(%{state: %__MODULE__{} = state} = status) do
-    %{status | state: %{subscriptions: map_size(state.subscriptions), monitors: map_size(state.monitors)}}
+    %{
+      status
+      | state: %{subscriptions: map_size(state.subscriptions), monitors: map_size(state.monitors)}
+    }
   end
 
   def format_status(status), do: status
@@ -146,9 +149,12 @@ defmodule ElixirRpc.P2P.Node.HandlerRegistry do
       {^pid, ref} ->
         Process.demonitor(ref, [:flush])
         remaining = List.keydelete(entries, pid, 0)
+
         subscriptions =
-          if remaining == [], do: Map.delete(state.subscriptions, key),
-          else: Map.put(state.subscriptions, key, remaining)
+          if remaining == [],
+            do: Map.delete(state.subscriptions, key),
+            else: Map.put(state.subscriptions, key, remaining)
+
         %{state | subscriptions: subscriptions, monitors: Map.delete(state.monitors, ref)}
 
       nil ->
@@ -161,9 +167,12 @@ defmodule ElixirRpc.P2P.Node.HandlerRegistry do
       {{^dead_pid, node, event_type}, monitors} ->
         key = {node, event_type}
         remaining = Map.get(state.subscriptions, key, []) |> List.keydelete(dead_pid, 0)
+
         subscriptions =
-          if remaining == [], do: Map.delete(state.subscriptions, key),
-          else: Map.put(state.subscriptions, key, remaining)
+          if remaining == [],
+            do: Map.delete(state.subscriptions, key),
+            else: Map.put(state.subscriptions, key, remaining)
+
         %{state | subscriptions: subscriptions, monitors: monitors}
 
       {nil, _} ->
@@ -176,6 +185,7 @@ defmodule ElixirRpc.P2P.Node.HandlerRegistry do
       Enum.reduce(state.subscriptions, {[], []}, fn
         {{^node, _} = key, entries}, {keys, refs} ->
           {[key | keys], Enum.map(entries, fn {_pid, ref} -> ref end) ++ refs}
+
         _, acc ->
           acc
       end)

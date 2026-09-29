@@ -141,18 +141,28 @@ defmodule ElixirRpc.Telemetry.Counters do
     metric_name = metric_name_for(event)
 
     header = [
-      "# HELP ", metric_name, "_total Number of [",
+      "# HELP ",
+      metric_name,
+      "_total Number of [",
       Enum.map_join(event, ", ", &Atom.to_string/1),
       "] events fired, partitioned by result.\n",
-      "# TYPE ", metric_name, "_total counter\n"
+      "# TYPE ",
+      metric_name,
+      "_total counter\n"
     ]
 
     body =
       entries
       |> Enum.sort_by(fn {{_event, result}, _count} -> result end)
       |> Enum.map(fn {{_event, result}, count} ->
-        [metric_name, "_total{result=\"", Atom.to_string(result), "\"} ",
-         Integer.to_string(count), "\n"]
+        [
+          metric_name,
+          "_total{result=\"",
+          Atom.to_string(result),
+          "\"} ",
+          Integer.to_string(count),
+          "\n"
+        ]
       end)
 
     [header, body, "\n"]

@@ -239,7 +239,11 @@ defmodule ElixirRpc.P2P.Node.Event do
   end
 
   def from_raw({:relay_reservation_accepted, relay_peer_id_str, relay_addr}) do
-    {:ok, %RelayReservationAccepted{relay_peer_id: PeerId.new!(relay_peer_id_str), relay_addr: relay_addr}}
+    {:ok,
+     %RelayReservationAccepted{
+       relay_peer_id: PeerId.new!(relay_peer_id_str),
+       relay_addr: relay_addr
+     }}
   end
 
   def from_raw({:hole_punch_outcome, peer_id_str, result}) do

@@ -1,7 +1,7 @@
 use libp2p::{
-    autonat, connection_limits, dcutr, gossipsub, identify, kad, mdns,
-    memory_connection_limits, ping, relay, rendezvous, request_response,
-    swarm::{behaviour::toggle::Toggle, NetworkBehaviour},
+    autonat, connection_limits, dcutr, gossipsub, identify, kad, mdns, memory_connection_limits,
+    ping, relay, rendezvous, request_response,
+    swarm::{NetworkBehaviour, behaviour::toggle::Toggle},
     upnp,
 };
 
