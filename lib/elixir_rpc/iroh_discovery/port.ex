@@ -9,6 +9,10 @@ defmodule ElixirRpc.IrohDiscovery.Port do
 
   @type result :: {:ok, map()} | {:error, term()}
 
+  @doc "Path of the daemon built by the `:iroh_discovery` compiler."
+  @spec default_executable() :: Path.t()
+  def default_executable, do: Application.app_dir(:elixir_rpc, "priv/bin/iroh_discovery_port")
+
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
     {gen_opts, port_opts} = Keyword.split(opts, [:name])
@@ -110,7 +114,7 @@ defmodule ElixirRpc.IrohDiscovery.Port do
 
   @impl true
   def init(opts) do
-    executable = Keyword.fetch!(opts, :executable)
+    executable = Keyword.get_lazy(opts, :executable, &default_executable/0)
 
     arguments =
       Enum.map([:data_dir, :fleet_id, :node_name], fn key ->

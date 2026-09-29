@@ -29,9 +29,13 @@ being replaced and are not architecture references.
 
 # config/runtime.exs
 config :elixir_rpc, network_mode: :iroh, iroh_discovery: [
-  executable: "/usr/bin/iroh_discovery_port", data_dir: "/data/iroh",
-  fleet_id: "...", node_name: "gpu@host"]
+  data_dir: "/data/iroh", fleet_id: "...", node_name: "gpu@host"]
 ```
+
+`mix compile` builds the Iroh daemon (`native/iroh_discovery`, needs cargo) into
+`priv/bin/iroh_discovery_port`, which is the default `:executable`. Set
+`CARGO_BUILD_TARGET` to cross-compile, `ELIXIR_RPC_SKIP_IROH_BUILD=1` to skip.
+Consumers must also set `config :partisan, ...` (node name, listen address).
 
 `network_mode` defaults to `:none` (only Horde + registry start). Nerves firmware
 files live in `examples/firmware/`; the dashboard/TUI demo in `examples/talk/`

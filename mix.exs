@@ -13,6 +13,7 @@ defmodule ElixirRpc.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      compilers: [:iroh_discovery | Mix.compilers()],
       description: "Capability-based process placement over Iroh, Partisan and Horde.",
       package: package(),
       source_url: @source_url,
@@ -56,5 +57,40 @@ defmodule ElixirRpc.MixProject do
       {:bandit, "~> 1.6", only: [:dev, :test]},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
+  end
+end
+
+defmodule Mix.Tasks.Compile.IrohDiscovery do
+  @shortdoc "Builds the iroh_discovery_port daemon into priv/bin"
+  @moduledoc """
+  Runs `cargo build` for `native/iroh_discovery` and copies the daemon to
+  `priv/bin/iroh_discovery_port` (release in prod, debug otherwise).
+  Set `CARGO_BUILD_TARGET` to cross-compile; `ELIXIR_RPC_SKIP_IROH_BUILD=1` skips.
+  """
+  use Mix.Task.Compiler
+
+  @bin "iroh_discovery_port"
+
+  @impl true
+  def run(_args) do
+    if System.get_env("ELIXIR_RPC_SKIP_IROH_BUILD") in [nil, ""], do: build()
+    {:ok, []}
+  end
+
+  defp build do
+    profile = if Mix.env() == :prod, do: "release", else: "debug"
+    dir = Path.join(File.cwd!(), "native/iroh_discovery")
+    args = ["build", "--bin", @bin] ++ if(profile == "release", do: ["--release"], else: [])
+
+    case System.cmd("cargo", args, cd: dir, into: IO.stream(), stderr_to_stdout: true) do
+      {_, 0} -> :ok
+      {_, code} -> Mix.raise("cargo build of #{@bin} failed (exit #{code})")
+    end
+
+    triple = System.get_env("CARGO_BUILD_TARGET")
+    built = Path.join([dir, "target", triple || "", profile, @bin])
+    dest = Path.join([Mix.Project.app_path(), "priv", "bin", @bin])
+    File.mkdir_p!(Path.dirname(dest))
+    File.cp!(built, dest)
   end
 end
