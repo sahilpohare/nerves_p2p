@@ -5,7 +5,7 @@ defmodule ElixirRpc.TalkDemo do
   alias ElixirRpc.Network
 
   @default_bin Path.expand(
-                 "../../native/iroh_discovery/target/debug/iroh_discovery_port",
+                 "../../../native/iroh_discovery/target/debug/iroh_discovery_port",
                  __DIR__
                )
 
@@ -335,12 +335,12 @@ defmodule ElixirRpc.TalkDemo do
           {Horde.Registry,
            name: ElixirRpc.Registry,
            keys: :unique,
-           members: {:auto, Horde.NodeListener.Partisan},
-           transport: Horde.ClusterTransport.Partisan},
+           members: {:auto, ElixirRpc.Horde.PartisanNodeListener},
+           transport: ElixirRpc.Horde.PartisanTransport},
           {Horde.DynamicSupervisor,
            name: ElixirRpc.DynamicSupervisor,
            strategy: :one_for_one,
-           members: {:auto, Horde.NodeListener.Partisan},
+           members: {:auto, ElixirRpc.Horde.PartisanNodeListener},
            distribution_strategy: ElixirRpc.Network.CapabilityDistributionStrategy}
         ]
 

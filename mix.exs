@@ -3,37 +3,24 @@ defmodule ElixirRpc.MixProject do
 
   @app :elixir_rpc
   @version "0.1.0"
-  @all_targets [
-    :bbb,
-    :grisp2,
-    :osd32mp1,
-    :mangopi_mq_pro,
-    :qemu_aarch64,
-    :rpi,
-    :rpi0,
-    :rpi0_2,
-    :rpi2,
-    :rpi3,
-    :rpi4,
-    :rpi5,
-    :x86_64
-  ]
+  @source_url "https://github.com/sahilpohare/nerves_p2p"
 
   def project do
     [
       app: @app,
       version: @version,
       elixir: "~> 1.19",
-      archives: [nerves_bootstrap: "~> 1.15"],
-      listeners: listeners(Mix.target(), Mix.env()),
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      releases: [{@app, release()}],
-      compilers: Mix.compilers()
+      compilers: [:iroh_discovery | Mix.compilers()],
+      description: "Capability-based process placement over Iroh, Partisan and Horde.",
+      package: package(),
+      source_url: @source_url,
+      docs: [main: "readme", extras: ["README.md", "ARCHITECTURE.md"]]
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
       extra_applications: [:logger, :runtime_tools, :partisan],
@@ -41,79 +28,69 @@ defmodule ElixirRpc.MixProject do
     ]
   end
 
-  def cli do
-    [preferred_targets: [run: :host, test: :host]]
+  # Demo (dashboard, TUI, mix tasks) compiles only in dev/test.
+  defp elixirc_paths(:prod), do: ["lib"]
+  defp elixirc_paths(_), do: ["lib", "examples/talk/lib"]
+
+  defp package do
+    [
+      licenses: ["Apache-2.0"],
+      links: %{"GitHub" => @source_url},
+      files: ~w(lib native/iroh_discovery/src native/iroh_discovery/Cargo.* native/p2p_bridge/src
+                native/p2p_bridge/Cargo.* src mix.exs README.md ARCHITECTURE.md)
+    ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      # Dependencies for all targets
-      {:nerves, "~> 1.13", runtime: false},
-      {:shoehorn, "~> 0.9.1"},
-      {:ring_logger, "~> 0.11.0"},
-      {:toolshed, "~> 0.4.0"},
       {:libp2p_elixir, "~> 0.9.6"},
-      # Allow Nerves.Runtime on host to support development, testing and CI.
-      # See config/host.exs for usage.
-      {:nerves_runtime, "~> 0.13.12"},
-
-      # Partisan for P2P mesh networking and NAT traversal
       {:partisan, "~> 5.0"},
       {:ex_hash_ring, "~> 6.0"},
       {:delta_crdt, "~> 0.6"},
-      {:horde, path: "../horde"},
-
-      # Observability
+      {:horde, github: "elixir-horde/horde", branch: "master"},
       {:telemetry, "~> 1.1"},
-
-      # TUI
-      {:owl, "~> 0.13"},
-
-      # Talk dashboard
-      {:plug, "~> 1.16"},
-      {:bandit, "~> 1.6"},
-
-      # Rust NIF bridge
       {:rustler, "~> 0.36", runtime: false},
 
-      # Dependencies for all targets except :host
-      {:nerves_pack, "~> 0.7.1", targets: @all_targets},
-
-      # Dependencies for specific targets
-      # NOTE: It's generally low risk and recommended to follow minor version
-      # bumps to Nerves systems. Since these include Linux kernel and Erlang
-      # version updates, please review their release notes in case
-      # changes to your application are needed.
-      {:nerves_system_bbb, "~> 2.19", runtime: false, targets: :bbb},
-      {:nerves_system_grisp2, "~> 0.8", runtime: false, targets: :grisp2},
-      {:nerves_system_osd32mp1, "~> 0.15", runtime: false, targets: :osd32mp1},
-      {:nerves_system_mangopi_mq_pro, "~> 0.6", runtime: false, targets: :mangopi_mq_pro},
-      {:nerves_system_qemu_aarch64, "~> 0.1", runtime: false, targets: :qemu_aarch64},
-      {:nerves_system_rpi, "~> 2.0", runtime: false, targets: :rpi},
-      {:nerves_system_rpi0, "~> 2.0", runtime: false, targets: :rpi0},
-      {:nerves_system_rpi0_2, "~> 2.0", runtime: false, targets: :rpi0_2},
-      {:nerves_system_rpi2, "~> 2.0", runtime: false, targets: :rpi2},
-      {:nerves_system_rpi3, "~> 2.0", runtime: false, targets: :rpi3},
-      {:nerves_system_rpi4, "~> 2.0", runtime: false, targets: :rpi4},
-      {:nerves_system_rpi5, "~> 2.0", runtime: false, targets: :rpi5},
-      {:nerves_system_x86_64, "~> 1.24", runtime: false, targets: :x86_64}
+      # Demo only
+      {:owl, "~> 0.13", only: [:dev, :test]},
+      {:plug, "~> 1.16", only: [:dev, :test]},
+      {:bandit, "~> 1.6", only: [:dev, :test]},
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
   end
+end
 
-  def release do
-    [
-      overwrite: true,
-      # Erlang distribution is not started automatically.
-      # See https://hexdocs.pm/nerves_pack/readme.html#erlang-distribution
-      cookie: "#{@app}_cookie",
-      include_erts: &Nerves.Release.erts/0,
-      steps: [&Nerves.Release.init/1, :assemble],
-      strip_beams: Mix.env() == :prod or [keep: ["Docs"]]
-    ]
+defmodule Mix.Tasks.Compile.IrohDiscovery do
+  @shortdoc "Builds the iroh_discovery_port daemon into priv/bin"
+  @moduledoc """
+  Runs `cargo build` for `native/iroh_discovery` and copies the daemon to
+  `priv/bin/iroh_discovery_port` (release in prod, debug otherwise).
+  Set `CARGO_BUILD_TARGET` to cross-compile; `ELIXIR_RPC_SKIP_IROH_BUILD=1` skips.
+  """
+  use Mix.Task.Compiler
+
+  @bin "iroh_discovery_port"
+
+  @impl true
+  def run(_args) do
+    if System.get_env("ELIXIR_RPC_SKIP_IROH_BUILD") in [nil, ""], do: build()
+    {:ok, []}
   end
 
-  # Uncomment the following line if using Phoenix > 1.8.
-  # defp listeners(:host, :dev), do: [Phoenix.CodeReloader]
-  defp listeners(_, _), do: []
+  defp build do
+    profile = if Mix.env() == :prod, do: "release", else: "debug"
+    dir = Path.join(File.cwd!(), "native/iroh_discovery")
+    args = ["build", "--bin", @bin] ++ if(profile == "release", do: ["--release"], else: [])
+
+    case System.cmd("cargo", args, cd: dir, into: IO.stream(), stderr_to_stdout: true) do
+      {_, 0} -> :ok
+      {_, code} -> Mix.raise("cargo build of #{@bin} failed (exit #{code})")
+    end
+
+    triple = System.get_env("CARGO_BUILD_TARGET")
+    built = Path.join([dir, "target", triple || "", profile, @bin])
+    dest = Path.join([Mix.Project.app_path(), "priv", "bin", @bin])
+    File.mkdir_p!(Path.dirname(dest))
+    File.cp!(built, dest)
+  end
 end

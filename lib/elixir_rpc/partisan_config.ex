@@ -227,8 +227,8 @@ defmodule ElixirRpc.PartisanConfig do
   Note: Requires mdns_lite to be running (enabled on Nerves targets).
   """
   def discover_mdns_peers do
-    if Mix.target() == :host do
-      Logger.warning("mDNS discovery not available in host mode")
+    if not Code.ensure_loaded?(MdnsLite) do
+      Logger.warning("mDNS discovery not available (mdns_lite not loaded)")
       []
     else
       # Query for partisan services
@@ -328,16 +328,16 @@ defmodule ElixirRpc.PartisanConfig do
     end
   end
 
-  defp get_hostname do
-    case Mix.target() do
-      :host ->
-        "127.0.0.1"
+  @host_target Mix.target() == :host
 
-      _ ->
-        case :inet.gethostname() do
-          {:ok, hostname} -> to_string(hostname)
-          _ -> get_local_ip()
-        end
+  defp get_hostname do
+    if @host_target do
+      "127.0.0.1"
+    else
+      case :inet.gethostname() do
+        {:ok, hostname} -> to_string(hostname)
+        _ -> get_local_ip()
+      end
     end
   end
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Nerves-based Elixir project implementing a peer-to-peer discovery and RPC system for BEAM devices in low-reliability environments (e.g., construction sites). The system enables autonomous device discovery, mesh networking, and capability-based routing of BEAM RPC calls.
+This is an Elixir library (formerly a Nerves firmware project; firmware reference in `examples/firmware/`) implementing a peer-to-peer discovery and RPC system for BEAM devices in low-reliability environments (e.g., construction sites). The system enables autonomous device discovery, mesh networking, and capability-based routing of BEAM RPC calls.
 
 **Key Goals:**
 - Zero-configuration P2P discovery without central servers
@@ -28,64 +28,15 @@ This is a standard Nerves project with target-specific configurations:
 
 ## Common Commands
 
-### Development (Host Target)
-
-The project defaults to building for `:host` (your development machine) when `MIX_TARGET` is not set.
-
 ```bash
-# Install dependencies
 mix deps.get
-
-# Run tests
-mix test
-
-# Start IEx session
-iex -S mix
-
-# Format code
+mix test          # builds native/iroh_discovery via the :iroh_discovery compiler (needs cargo)
 mix format
-
-# Run single test file
-mix test test/elixir_rpc_test.exs
-
-# Run specific test
-mix test test/elixir_rpc_test.exs:10
+mix talk.demo     # demo in examples/talk (dev/test only)
 ```
 
-### Building for Hardware Targets
-
-Supported targets: `:bbb`, `:grisp2`, `:osd32mp1`, `:mangopi_mq_pro`, `:qemu_aarch64`, `:rpi`, `:rpi0`, `:rpi0_2`, `:rpi2`, `:rpi3`, `:rpi4`, `:rpi5`, `:x86_64`
-
-```bash
-# Set target for all subsequent commands
-export MIX_TARGET=rpi4
-
-# Or prefix individual commands
-MIX_TARGET=rpi4 mix deps.get
-MIX_TARGET=rpi4 mix firmware
-
-# Create firmware image
-mix firmware
-
-# Burn to SD card (interactive prompt for device)
-mix burn
-
-# Upload firmware to running device over SSH
-mix upload nerves.local
-```
-
-### Working with Nerves Devices
-
-```bash
-# SSH into device
-ssh nerves.local
-
-# Check firmware info on device (from IEx)
-Nerves.Runtime.KV.get_all_active()
-
-# Reboot device (from IEx)
-Nerves.Runtime.reboot()
-```
+Firmware files from the old Nerves layout live in `examples/firmware/` (reference only).
+`network_mode` (`:none` default, `:iroh`, `:legacy`) selects what the app starts; libp2p (`:legacy`) is being phased out.
 
 ## Architecture Notes
 
