@@ -5,24 +5,30 @@ defmodule ElixirRpc.Application do
 
   @impl true
   def start(_type, _args) do
-    children =
-      network_children(Application.get_env(:elixir_rpc, :network_mode, :none)) ++
-        [
-          ElixirRpc.Telemetry.Counters,
-          {Horde.Registry,
-           name: ElixirRpc.Registry,
-           keys: :unique,
-           members: {:auto, ElixirRpc.Horde.PartisanNodeListener},
-           transport: ElixirRpc.Horde.PartisanTransport},
-          {Horde.DynamicSupervisor,
-           name: ElixirRpc.DynamicSupervisor,
-           strategy: :one_for_one,
-           members: {:auto, ElixirRpc.Horde.PartisanNodeListener},
-           distribution_strategy: ElixirRpc.Network.CapabilityDistributionStrategy},
-          ElixirRpc.Network.ModuleRegistry
-        ]
+    mode = Application.get_env(:elixir_rpc, :network_mode, :none)
+    children = network_children(mode) ++ placement_children(mode)
 
     Supervisor.start_link(children, strategy: :one_for_one, name: ElixirRpc.Supervisor)
+  end
+
+  # :none starts nothing; the consumer supervises what it needs.
+  defp placement_children(:none), do: []
+
+  defp placement_children(_mode) do
+    [
+      ElixirRpc.Telemetry.Counters,
+      {Horde.Registry,
+       name: ElixirRpc.Registry,
+       keys: :unique,
+       members: {:auto, ElixirRpc.Horde.PartisanNodeListener},
+       transport: ElixirRpc.Horde.PartisanTransport},
+      {Horde.DynamicSupervisor,
+       name: ElixirRpc.DynamicSupervisor,
+       strategy: :one_for_one,
+       members: {:auto, ElixirRpc.Horde.PartisanNodeListener},
+       distribution_strategy: ElixirRpc.Network.CapabilityDistributionStrategy},
+      ElixirRpc.Network.ModuleRegistry
+    ]
   end
 
   defp network_children(:none), do: []
