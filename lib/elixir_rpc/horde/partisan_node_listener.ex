@@ -1,4 +1,4 @@
-defmodule Horde.NodeListener.Partisan do
+defmodule ElixirRpc.Horde.PartisanNodeListener do
   @moduledoc """
   A Horde node listener for Partisan-based clusters.
 
@@ -11,7 +11,7 @@ defmodule Horde.NodeListener.Partisan do
       {Horde.Registry,
         name: MyRegistry,
         keys: :unique,
-        members: {:auto, Horde.NodeListener.Partisan}}
+        members: {:auto, ElixirRpc.Horde.PartisanNodeListener}}
   """
 
   use Horde.NodeListenerBehaviour

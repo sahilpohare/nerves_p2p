@@ -1,4 +1,4 @@
-defmodule Horde.ClusterTransport.Partisan do
+defmodule ElixirRpc.Horde.PartisanTransport do
   @moduledoc "Cluster transport using Partisan for peer communication."
 
   @behaviour Horde.ClusterTransport
