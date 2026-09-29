@@ -5,7 +5,7 @@ defmodule ElixirRpc.TalkDemo do
   alias ElixirRpc.Network
 
   @default_bin Path.expand(
-                 "../../native/iroh_discovery/target/debug/iroh_discovery_port",
+                 "../../../native/iroh_discovery/target/debug/iroh_discovery_port",
                  __DIR__
                )
 

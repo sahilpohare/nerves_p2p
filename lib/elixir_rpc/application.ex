@@ -3,12 +3,10 @@ defmodule ElixirRpc.Application do
 
   use Application
 
-  require Logger
-
   @impl true
   def start(_type, _args) do
     children =
-      network_children(Application.get_env(:elixir_rpc, :network_mode, :legacy)) ++
+      network_children(Application.get_env(:elixir_rpc, :network_mode, :none)) ++
         [
           ElixirRpc.Telemetry.Counters,
           {Horde.Registry,
@@ -22,10 +20,12 @@ defmodule ElixirRpc.Application do
            members: {:auto, Horde.NodeListener.Partisan},
            distribution_strategy: ElixirRpc.Network.CapabilityDistributionStrategy},
           ElixirRpc.Network.ModuleRegistry
-        ] ++ target_children()
+        ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: ElixirRpc.Supervisor)
   end
+
+  defp network_children(:none), do: []
 
   defp network_children(:legacy) do
     [
@@ -57,37 +57,5 @@ defmodule ElixirRpc.Application do
     :elixir_rpc
     |> Application.fetch_env!(:iroh_discovery)
     |> Keyword.put_new(:name, ElixirRpc.IrohDiscovery)
-  end
-
-  if Mix.target() == :host do
-    defp target_children, do: []
-  else
-    defp target_children do
-      [
-        %{
-          id: :vintage_net_watcher,
-          start: {Task, :start_link, [&watch_network/0]},
-          restart: :permanent
-        }
-      ]
-    end
-
-    defp watch_network do
-      if Code.ensure_loaded?(VintageNet) do
-        VintageNet.subscribe(["interface", :_, "connection"])
-        receive_loop()
-      end
-    end
-
-    defp receive_loop do
-      receive do
-        {VintageNet, ["interface", _ifname, "connection"], _old, :internet, _meta} ->
-          Logger.info("Network up; Iroh discovery will refresh addresses in the background")
-          receive_loop()
-
-        _ ->
-          receive_loop()
-      end
-    end
   end
 end

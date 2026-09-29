@@ -21,6 +21,22 @@ being replaced and are not architecture references.
 - The existing libp2p runtime remains active until the Iroh Port and Partisan
   tunnel are proven end to end.
 
+## Use as a library
+
+```elixir
+# mix.exs
+{:elixir_rpc, path: "../elixir_rpc"}   # horde fork must also be resolvable
+
+# config/runtime.exs
+config :elixir_rpc, network_mode: :iroh, iroh_discovery: [
+  executable: "/usr/bin/iroh_discovery_port", data_dir: "/data/iroh",
+  fleet_id: "...", node_name: "gpu@host"]
+```
+
+`network_mode` defaults to `:none` (only Horde + registry start). Nerves firmware
+files live in `examples/firmware/`; the dashboard/TUI demo in `examples/talk/`
+(compiled in dev/test only).
+
 ## Development
 
 ```bash

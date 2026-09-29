@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Nerves-based Elixir project implementing a peer-to-peer discovery and RPC system for BEAM devices in low-reliability environments (e.g., construction sites). The system enables autonomous device discovery, mesh networking, and capability-based routing of BEAM RPC calls.
+This is an Elixir library (formerly a Nerves firmware project; firmware reference in `examples/firmware/`) implementing a peer-to-peer discovery and RPC system for BEAM devices in low-reliability environments (e.g., construction sites). The system enables autonomous device discovery, mesh networking, and capability-based routing of BEAM RPC calls.
 
 **Key Goals:**
 - Zero-configuration P2P discovery without central servers
