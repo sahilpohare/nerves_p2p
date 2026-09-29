@@ -46,8 +46,7 @@ defmodule ElixirRpc.MixProject do
       {:partisan, "~> 5.0"},
       {:ex_hash_ring, "~> 6.0"},
       {:delta_crdt, "~> 0.6"},
-      # ponytail: local fork with uncommitted Partisan changes; publish the fork (git dep) before releasing.
-      {:horde, path: "../horde"},
+      {:horde, github: "elixir-horde/horde", branch: "master"},
       {:telemetry, "~> 1.1"},
       {:rustler, "~> 0.36", runtime: false},
 
