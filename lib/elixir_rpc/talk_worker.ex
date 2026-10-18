@@ -85,7 +85,8 @@ defmodule ElixirRpc.TalkWorker do
         "ttl_ms" => 60_000,
         "partisan_ip" => ip,
         "partisan_port" => port,
-        "capabilities" => state.capabilities,
+        "capabilities" =>
+          Map.put(state.capabilities, "code", ElixirRpc.CodeIdentity.advertised()),
         "load" => %{"running" => 0, "capacity" => 1}
       })
 

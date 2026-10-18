@@ -22,7 +22,7 @@ use iroh_discovery::{
     Predicate, Registry,
     dist::Event as DistEvent,
     load_or_create_secret, reserve_next, sign_announcement,
-    transport::{Subscription, Transport},
+    transport::{Received, Subscription, Transport},
 };
 use iroh_gossip::TopicId;
 use iroh_mainline_address_lookup::DhtAddressLookup;
@@ -245,7 +245,7 @@ async fn main() -> Result<(), Box<dyn StdError>> {
                 let now = now_ms(started);
                 if let Some(network) = &mut state.network {
                     let _ = receive_mdns_peers(network).await;
-                    let _ = poll_announcements(network, &mut state.registry, now).await;
+                    let _ = poll_announcements(network, &mut state.registry, &secret, now).await;
                 }
                 sync_dist_bindings(&mut state, now);
             },
@@ -461,7 +461,7 @@ async fn handle(
         }
         Command::Find { predicates } => {
             if let Some(network) = &mut state.network {
-                receive_announcements(network, &mut state.registry, now).await?;
+                receive_announcements(network, &mut state.registry, secret, now).await?;
             }
             sync_dist_bindings(state, now);
             let predicates = predicates
@@ -490,7 +490,7 @@ async fn handle(
                 return Err("wrong_target".into());
             }
             if let Some(network) = &mut state.network {
-                receive_announcements(network, &mut state.registry, now).await?;
+                receive_announcements(network, &mut state.registry, secret, now).await?;
             }
             sync_dist_bindings(state, now);
             state
@@ -511,7 +511,7 @@ async fn handle(
                 return Err("unauthorized_source".into());
             }
             if let Some(network) = &mut state.network {
-                receive_announcements(network, &mut state.registry, now).await?;
+                receive_announcements(network, &mut state.registry, secret, now).await?;
             }
             sync_dist_bindings(state, now);
             let stream_id = state
@@ -618,14 +618,18 @@ fn json_endpoint_addr(value: EndpointAddr) -> JsonEndpointAddr {
 async fn receive_announcements(
     network: &mut Network,
     registry: &mut Registry<FileSequenceStore>,
+    secret: &SecretKey,
     now: u64,
 ) -> Result<(), String> {
     let mut wait = Duration::from_millis(500);
     while let Ok(received) = timeout(wait, network.subscription.receive()).await {
-        let Some(envelope) = received.map_err(|_| "network_failed")? else {
-            break;
-        };
-        let _ = registry.receive(&envelope, now);
+        match received.map_err(|_| "network_failed")? {
+            Some(Received::Message(envelope)) => {
+                let _ = registry.receive(&envelope, now);
+            }
+            Some(Received::NeighborJoined) => resync(network, registry, secret, now).await,
+            None => break,
+        }
         wait = Duration::from_millis(1);
     }
     Ok(())
@@ -634,16 +638,37 @@ async fn receive_announcements(
 async fn poll_announcements(
     network: &mut Network,
     registry: &mut Registry<FileSequenceStore>,
+    secret: &SecretKey,
     now: u64,
 ) -> Result<(), String> {
     while let Ok(received) = timeout(Duration::from_millis(1), network.subscription.receive()).await
     {
-        let Some(envelope) = received.map_err(|_| "network_failed")? else {
-            break;
-        };
-        let _ = registry.receive(&envelope, now);
+        match received.map_err(|_| "network_failed")? {
+            Some(Received::Message(envelope)) => {
+                let _ = registry.receive(&envelope, now);
+            }
+            Some(Received::NeighborJoined) => resync(network, registry, secret, now).await,
+            None => break,
+        }
     }
     Ok(())
+}
+
+/// A peer that joins the gossip topic after we last broadcast our record would
+/// otherwise never see it (gossip has no history). Re-broadcast our own
+/// current announcement so late joiners can still discover us.
+async fn resync(
+    network: &Network,
+    registry: &mut Registry<FileSequenceStore>,
+    secret: &SecretKey,
+    now: u64,
+) {
+    let Some(announcement) = registry.active(&secret.public(), now).cloned() else {
+        return;
+    };
+    if let Ok(envelope) = sign_announcement(&announcement, secret) {
+        let _ = network.subscription.broadcast(envelope).await;
+    }
 }
 
 fn sync_dist_bindings(state: &mut State, now: u64) {

@@ -92,14 +92,23 @@ impl Subscription {
         Ok(())
     }
 
-    pub async fn receive(&mut self) -> Result<Option<Vec<u8>>, Error> {
+    pub async fn receive(&mut self) -> Result<Option<Received>, Error> {
         while let Some(event) = self.receiver.next().await {
             match event? {
-                Event::Received(message) => return Ok(Some(message.content.to_vec())),
+                Event::Received(message) => {
+                    return Ok(Some(Received::Message(message.content.to_vec())));
+                }
                 Event::Lagged => return Err(Error::Lagged),
-                Event::NeighborUp(_) | Event::NeighborDown(_) => {}
+                // A late joiner won't have seen our last broadcast; resync it.
+                Event::NeighborUp(_) => return Ok(Some(Received::NeighborJoined)),
+                Event::NeighborDown(_) => {}
             }
         }
         Ok(None)
     }
+}
+
+pub enum Received {
+    Message(Vec<u8>),
+    NeighborJoined,
 }

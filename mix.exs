@@ -91,6 +91,19 @@ defmodule Mix.Tasks.Compile.IrohDiscovery do
     built = Path.join([dir, "target", triple || "", profile, @bin])
     dest = Path.join([Mix.Project.app_path(), "priv", "bin", @bin])
     File.mkdir_p!(Path.dirname(dest))
-    File.cp!(built, dest)
+    install(built, dest)
+  end
+
+  # `priv` is a symlink shared by every build of this project (including
+  # Mix.install caches), so a running daemon may be using `dest`. Overwriting a
+  # signed binary in place leaves macOS with a stale code signature for that
+  # inode and later launches are killed; replace it atomically, and only when
+  # it actually changed.
+  defp install(built, dest) do
+    if File.read(dest) != File.read(built) do
+      tmp = dest <> ".tmp"
+      File.cp!(built, tmp)
+      File.rename!(tmp, dest)
+    end
   end
 end
