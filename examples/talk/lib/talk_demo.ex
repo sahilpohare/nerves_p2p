@@ -1,11 +1,12 @@
 defmodule ElixirRpc.TalkDemo do
   @moduledoc "Runs staged local or remote Iroh discovery and Horde placement demos."
 
+  alias ElixirRpc.{CodeIdentity, DemoWorker}
   alias ElixirRpc.IrohDiscovery.Port
   alias ElixirRpc.Network
 
   @default_bin Path.expand(
-                 "../../native/iroh_discovery/target/debug/iroh_discovery_port",
+                 "../../../native/iroh_discovery/target/debug/iroh_discovery_port",
                  __DIR__
                )
 
@@ -95,7 +96,7 @@ defmodule ElixirRpc.TalkDemo do
         "ttl_ms" => 60_000,
         "partisan_ip" => partisan_ip,
         "partisan_port" => partisan_port,
-        "capabilities" => %{"gpu" => true},
+        "capabilities" => %{"gpu" => true, "code" => CodeIdentity.advertised()},
         "load" => %{"running" => 0, "capacity" => 1}
       })
 
@@ -137,11 +138,11 @@ defmodule ElixirRpc.TalkDemo do
     child = %{
       id: id,
       restart: :temporary,
-      start: {Task, :start_link, [fn -> send(caller, {id, {:demo_result, id, node()}}) end]}
+      start: {Task, :start_link, [DemoWorker, :report, [caller, id]]}
     }
 
     {:ok, _pid} =
-      Network.start_child(%{gpu: true}, child,
+      Network.start_child(Map.new([{:gpu, true}, CodeIdentity.requirement(DemoWorker)]), child,
         discovery: finder,
         authorized_nodes: %{partisan_name => node()}
       )
@@ -242,7 +243,7 @@ defmodule ElixirRpc.TalkDemo do
     child = %{
       id: id,
       restart: :temporary,
-      start: {Task, :start_link, [fn -> send(caller, {id, {:demo_result, id, node()}}) end]}
+      start: {Task, :start_link, [DemoWorker, :report, [caller, id]]}
     }
 
     authorized_nodes =
@@ -251,7 +252,7 @@ defmodule ElixirRpc.TalkDemo do
       end)
 
     {:ok, _pid} =
-      Network.start_child(%{gpu: true}, child,
+      Network.start_child(Map.new([{:gpu, true}, CodeIdentity.requirement(DemoWorker)]), child,
         discovery: finder,
         authorized_nodes: authorized_nodes,
         timeout: Keyword.get(opts, :handoff_timeout, 5_000)
@@ -335,12 +336,12 @@ defmodule ElixirRpc.TalkDemo do
           {Horde.Registry,
            name: ElixirRpc.Registry,
            keys: :unique,
-           members: {:auto, Horde.NodeListener.Partisan},
-           transport: Horde.ClusterTransport.Partisan},
+           members: {:auto, ElixirRpc.Horde.PartisanNodeListener},
+           transport: ElixirRpc.Horde.PartisanTransport},
           {Horde.DynamicSupervisor,
            name: ElixirRpc.DynamicSupervisor,
            strategy: :one_for_one,
-           members: {:auto, Horde.NodeListener.Partisan},
+           members: {:auto, ElixirRpc.Horde.PartisanNodeListener},
            distribution_strategy: ElixirRpc.Network.CapabilityDistributionStrategy}
         ]
 

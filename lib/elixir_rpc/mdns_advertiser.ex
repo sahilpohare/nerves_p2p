@@ -22,7 +22,7 @@ defmodule ElixirRpc.MdnsAdvertiser do
   @impl true
   def init(_opts) do
     # Only advertise on Nerves targets (not host mode)
-    if Mix.target() != :host and Code.ensure_loaded?(MdnsLite) do
+    if Code.ensure_loaded?(MdnsLite) do
       # Wait longer for libp2p bridge and Partisan port configuration
       Process.send_after(self(), :advertise, 3000)
     end

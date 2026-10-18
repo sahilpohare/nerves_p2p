@@ -1,0 +1,197 @@
+# Communist Nerves — Two Comrades, One Mesh
+
+```elixir
+# SETUP — this notebook's runtime is comrade A.
+# Pulls the project in as a dependency but starts nothing
+# (start_applications: false). Each comrade is configured and started
+# explicitly below. The install config never changes between runs, so after
+# the first run this cell is served from cache: no network, no recompile.
+
+project = "/Users/sahilpohare/p2p/p2p_clustering/elixir_rpc"
+
+Mix.install([{:elixir_rpc, path: project, env: :dev}], start_applications: false)
+
+Logger.configure(level: :warning)
+:logger.set_primary_config(:level, :warning)
+
+# Partisan needs a free TCP port per comrade; ask the OS for one.
+free_port = fn ->
+  {:ok, socket} = :gen_tcp.listen(0, reuseaddr: true)
+  {:ok, port} = :inet.port(socket)
+  :gen_tcp.close(socket)
+  port
+end
+
+alias ElixirRpc.{CodeIdentity, DemoWorker, Network}
+
+# One fleet ID shared by both comrades: signed records from any endpoint in
+# this fleet are enrolled automatically, so nobody configures the other.
+fleet = Base.encode16(:crypto.strong_rand_bytes(32), case: :lower)
+root = Path.join(System.tmp_dir!(), "comrades-#{System.unique_integer([:positive])}")
+
+"comrade A is #{node()}"
+```
+
+## 1. Boot comrade B
+
+A second, completely separate BEAM on this machine. It gets our code path, so
+it runs byte-identical modules — which is exactly what the code hash will prove
+later. B is born knowing nothing about the mesh.
+
+```elixir
+# Start a sibling BEAM with the same code path and cookie.
+# :peer is only the local launcher; B still has to find A on its own over Iroh.
+[_, host] = node() |> Atom.to_string() |> String.split("@")
+
+{:ok, b_pid, b} =
+  :peer.start(%{
+    name: :"comrade_b_#{System.unique_integer([:positive])}",
+    host: String.to_charlist(host),
+    longnames: true,
+    args:
+      [~c"-setcookie", Atom.to_charlist(Node.get_cookie())] ++
+        Enum.flat_map(:code.get_path(), &[~c"-pa", &1])
+  })
+
+# Keep B's console quiet too.
+:erpc.call(b, :logger, :set_primary_config, [:level, :warning])
+
+"comrade B is #{b}"
+```
+
+## 2. Both comrades join the mesh
+
+Each comrade starts the same three things:
+
+* an **Iroh daemon** — its signed identity, plus mDNS, DHT, DNS and relay discovery
+* **Partisan** — the BEAM overlay that Horde places work over
+* a **TalkWorker** — republishes its signed capability record every 3 seconds
+
+A starts as a camera. B starts with no capabilities at all.
+
+```elixir
+# The whole app configuration for one comrade, as plain data.
+# Passed to Application.put_all_env/1 — on A locally, on B via :erpc.
+comrade_env = fn name, partisan_port, capabilities ->
+  name = Atom.to_string(name)
+
+  [
+    partisan: [
+      name: String.to_atom(name),
+      listen_addrs: [%{ip: {127, 0, 0, 1}, port: partisan_port}],
+      peer_service_manager: :partisan_hyparview_peer_service_manager,
+      hyparview: [active_min_size: 3, active_max_size: 6, passive_max_size: 30],
+      channels: [:membership, :rpc, :discovery],
+      tls: false
+    ],
+    elixir_rpc: [
+      # :iroh starts the discovery daemon + Horde; talk_worker publishes our record.
+      network_mode: :iroh,
+      iroh_discovery: [
+        data_dir: Path.join(root, name),
+        fleet_id: fleet,
+        node_name: name
+      ],
+      talk_worker: [capabilities: capabilities],
+      # Modules this comrade offers to run for others; their md5s go in the record.
+      placeable_modules: [DemoWorker],
+      # First spawn joins Partisan and waits for Horde membership to sync.
+      handoff_timeout: 15_000,
+      # Provisioned trust: advertised names we may place work on. Discovery
+      # never mints atoms from what strangers claim.
+      authorized_nodes: %{Atom.to_string(node()) => node(), Atom.to_string(b) => b}
+    ]
+  ]
+end
+
+# Comrade A: configure, then boot the app for the first time.
+:ok = Application.put_all_env(comrade_env.(node(), free_port.(), %{"camera" => true}))
+{:ok, _} = Application.ensure_all_started(:elixir_rpc)
+
+# Comrade B: same config shape, remote calls only — no closures cross the wire.
+:ok = :erpc.call(b, Application, :put_all_env, [comrade_env.(b, free_port.(), %{})])
+{:ok, _} = :erpc.call(b, Application, :ensure_all_started, [:elixir_rpc])
+
+# Partisan resets the log level when it boots; quiet both comrades again.
+:logger.set_primary_config(:level, :warning)
+:erpc.call(b, :logger, :set_primary_config, [:level, :warning])
+
+"both comrades are on the mesh"
+```
+
+## 3. Auto-discovery — A finds B
+
+Nobody told A where B is. Iroh finds the other daemon (mDNS on the LAN), the
+two gossip their signed records, and each side verifies the other's signature
+before trusting anything in it. Re-run this cell until B shows up (~2 s).
+
+```elixir
+# Everyone this comrade has discovered and verified, minus itself.
+# B has no capabilities yet — only its code hashes.
+{:ok, %{"peers" => peers}} = Network.capabilities()
+
+for peer <- peers, peer["node_name"] != Atom.to_string(node()) do
+  %{node: peer["node_name"], capabilities: peer["capabilities"], sequence: peer["sequence"]}
+end
+```
+
+## 4. Advertise — B declares a GPU
+
+B publishes a new signed snapshot. The code hashes ride along automatically.
+
+```elixir
+# Runs on B: replace B's capability snapshot and publish it immediately.
+:erpc.call(b, Network, :advertise, [[gpu: true, vram_mb: 8_192]])
+```
+
+```elixir
+# Back on A: the new record has arrived, with a higher signed sequence number.
+{:ok, %{"peers" => peers}} = Network.capabilities()
+for peer <- peers, peer["node_name"] == Atom.to_string(b), do: peer
+```
+
+## 5. Get work done — A spawns, B computes
+
+One line. A asks for "any GPU comrade holding my exact `DemoWorker`". The
+Ministry of Routing picks B, Partisan joins the two, Horde places the task on
+B, and the result comes home.
+
+```elixir
+# {module, function, args} — never a closure. DemoWorker.report/2 sends
+# {id, {:demo_result, id, node()}} back to us, so node() says where it ran.
+{:ok, _pid} = Network.spawn([gpu: true], {DemoWorker, :report, [self(), :frame_42]})
+
+receive do
+  {:frame_42, {:demo_result, :frame_42, ran_on}} -> "ran on #{ran_on}"
+after
+  10_000 -> "no answer — re-run section 3 and check B is listed"
+end
+```
+
+## 6. Trust — the Ministry checks your papers
+
+B only offered `DemoWorker`. Ask it to run anything else and there is no
+match in the signed record, so nothing is ever sent.
+
+```elixir
+# Kernel is not in B's placeable_modules, so no peer advertises Kernel's hash.
+Network.spawn([gpu: true], {Kernel, :node, []})
+```
+
+```elixir
+# What placement demanded vs what B actually signed.
+%{
+  demanded: CodeIdentity.requirement(Kernel),
+  b_offers: :erpc.call(b, CodeIdentity, :advertised, [])
+}
+```
+
+## 7. Tear down
+
+```elixir
+# Stop comrade B's BEAM and our networking; delete both daemons' keys.
+:peer.stop(b_pid)
+Application.stop(:elixir_rpc)
+File.rm_rf!(root)
+:ok
+```

@@ -20,3 +20,4 @@ native/iroh_discovery/target/
 rootfs_overlay/usr/bin/iroh_discovery_port
 priv/native/*
 .DS_Store
+priv/bin/

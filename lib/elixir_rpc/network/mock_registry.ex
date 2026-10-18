@@ -13,7 +13,7 @@ defmodule ElixirRpc.Network.MockRegistry do
       MockRegistry.register("peer-gpu",    %{gpu: true,    cpu: 8})
 
       # Network.spawn will automatically use this registry on :host
-      {:ok, pid} = Network.spawn([camera: true], fn -> :ok end)
+      {:ok, pid} = Network.spawn([camera: true], {Kernel, :node, []})
   """
 
   use GenServer

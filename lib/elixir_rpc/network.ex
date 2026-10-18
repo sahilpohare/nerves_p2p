@@ -1,6 +1,7 @@
 defmodule ElixirRpc.Network do
   @moduledoc "Capability discovery and targeted Horde handoff."
 
+  alias ElixirRpc.CodeIdentity
   alias ElixirRpc.IrohDiscovery.Port
   alias ElixirRpc.Network.Handoff
   alias ElixirRpc.TalkWorker
@@ -22,22 +23,28 @@ defmodule ElixirRpc.Network do
 
   def advertise(capabilities), do: {:error, {:invalid_capabilities, capabilities}}
 
-  @doc "Runs a zero-argument function on a peer selected by capability."
-  @spec spawn(map() | keyword(), (-> term())) :: {:ok, pid()} | {:error, term()}
-  def spawn(requirements, fun) when is_list(requirements) and is_function(fun, 0) do
+  @doc """
+  Runs `apply(module, fun, args)` on a capable peer that advertises the same
+  signed code hash for `module` as this node holds.
+  """
+  @spec spawn(map() | keyword(), {module(), atom(), list()}) :: {:ok, pid()} | {:error, term()}
+  def spawn(requirements, mfa) when is_list(requirements) do
     case Keyword.keyword?(requirements) do
-      true -> requirements |> Map.new() |> spawn(fun)
+      true -> requirements |> Map.new() |> spawn(mfa)
       false -> {:error, {:invalid_requirements, requirements}}
     end
   end
 
-  def spawn(requirements, fun) when is_map(requirements) and is_function(fun, 0) do
+  def spawn(requirements, {module, fun, args} = mfa)
+      when is_map(requirements) and is_atom(module) and is_atom(fun) and is_list(args) do
     case Application.fetch_env(:elixir_rpc, :authorized_nodes) do
       {:ok, authorized_nodes} ->
+        requirements = Map.new([CodeIdentity.requirement(module) | Map.to_list(requirements)])
+
         child_spec = %{
           id: {:network_spawn, make_ref()},
           restart: :temporary,
-          start: {Task, :start_link, [fun]}
+          start: {Task, :start_link, Tuple.to_list(mfa)}
         }
 
         start_child(requirements, child_spec,
@@ -51,8 +58,10 @@ defmodule ElixirRpc.Network do
     end
   end
 
-  def spawn(_requirements, fun) when not is_function(fun, 0), do: {:error, :invalid_function}
-  def spawn(requirements, _fun), do: {:error, {:invalid_requirements, requirements}}
+  def spawn(requirements, _mfa) when not is_map(requirements),
+    do: {:error, {:invalid_requirements, requirements}}
+
+  def spawn(_requirements, mfa), do: {:error, {:invalid_mfa, mfa}}
 
   @doc "Starts a child on the first peer matching the capability requirements."
   @spec start_child(map(), Supervisor.child_spec(), keyword()) ::

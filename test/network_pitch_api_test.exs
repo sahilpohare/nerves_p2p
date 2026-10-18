@@ -56,7 +56,7 @@ defmodule ElixirRpc.NetworkPitchApiTest do
     Application.put_env(:elixir_rpc, :authorized_nodes, %{partisan_name => node()})
     caller = self()
 
-    assert {:ok, _pid} = Network.spawn([gpu: true], fn -> send(caller, :pitch_task_ran) end)
+    assert {:ok, _pid} = Network.spawn([gpu: true], {Kernel, :send, [caller, :pitch_task_ran]})
     assert_receive :pitch_task_ran, 1_000
   end
 
@@ -65,7 +65,7 @@ defmodule ElixirRpc.NetworkPitchApiTest do
     Application.put_env(:elixir_rpc, :authorized_nodes, %{})
 
     assert {:error, {:unauthorized_node_name, "stranger@host"}} =
-             Network.spawn([gpu: true], fn -> :never end)
+             Network.spawn([gpu: true], {Kernel, :node, []})
   end
 
   defp start_port(mode, peer_name, name) do

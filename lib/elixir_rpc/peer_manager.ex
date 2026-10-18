@@ -60,7 +60,7 @@ defmodule ElixirRpc.PeerManager do
     Discovery.register_handler(ElixirRpc.Node, self())
 
     # Subscribe to VintageNet events (network up/down) on Nerves targets only
-    if Mix.target() != :host and Code.ensure_loaded?(VintageNet) do
+    if Code.ensure_loaded?(VintageNet) do
       apply(VintageNet, :subscribe, [["interface"]])
     end
 

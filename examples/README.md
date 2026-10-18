@@ -16,7 +16,15 @@ Application code can publish and place work with the pitch-level API:
 
 ```elixir
 {:ok, _record} = ElixirRpc.Network.advertise(gpu: 128, storage: 512)
-{:ok, _pid} = ElixirRpc.Network.spawn([gpu: true], fn -> infer(frame) end)
+{:ok, _pid} = ElixirRpc.Network.spawn([gpu: true], {Vision, :infer, [frame]})
+```
+
+Work is shipped as `{module, function, args}`, never a closure. Placement only
+selects peers whose signed capability record advertises the same compiled-code
+hash for `module`, so list it on every node:
+
+```elixir
+config :elixir_rpc, placeable_modules: [Vision]
 ```
 
 Partisan uses HyParView with a six-peer active view and a thirty-peer passive

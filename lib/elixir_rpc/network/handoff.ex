@@ -7,6 +7,7 @@ defmodule ElixirRpc.Network.Handoff do
   @registry ElixirRpc.Registry
   @default_timeout 5_000
   @poll_interval 10
+  @start_retry_interval 100
   @target_unavailable_prefix "target node is not an alive Horde member: "
 
   @doc "Waits for target membership and idempotently starts the child there."
@@ -15,11 +16,11 @@ defmodule ElixirRpc.Network.Handoff do
   def start_child(target_node, child_spec, timeout \\ @default_timeout)
       when is_atom(target_node) and is_integer(timeout) and timeout >= 0 do
     child_spec = Supervisor.child_spec(child_spec, [])
+    deadline = System.monotonic_time(:millisecond) + timeout
 
-    with :ok <- await_membership(target_node, timeout),
+    with :ok <- await_membership_until(target_node, deadline),
          {:ok, _id} <- fetch_id(child_spec) do
-      target_spec = put_target(child_spec, target_node)
-      normalize_start(Horde.DynamicSupervisor.start_child(@supervisor, target_spec))
+      start_until(put_target(child_spec, target_node), deadline)
     end
   end
 
@@ -46,11 +47,6 @@ defmodule ElixirRpc.Network.Handoff do
 
   defp monitor_child(pid), do: {:ok, %{pid: pid, ref: Process.monitor(pid)}}
 
-  defp await_membership(target_node, timeout) do
-    deadline = System.monotonic_time(:millisecond) + timeout
-    await_membership_until(target_node, deadline)
-  end
-
   defp await_membership_until(target_node, deadline) do
     case Enum.any?(Horde.Cluster.members(@supervisor), &member_on?(&1, target_node)) do
       true ->
@@ -69,6 +65,25 @@ defmodule ElixirRpc.Network.Handoff do
       remaining ->
         Process.sleep(min(@poll_interval, remaining))
         await_membership_until(target_node, deadline)
+    end
+  end
+
+  # A freshly joined member is listed before Horde marks it :alive, and the
+  # distribution strategy refuses non-alive targets; retry until the deadline.
+  defp start_until(target_spec, deadline) do
+    case normalize_start(Horde.DynamicSupervisor.start_child(@supervisor, target_spec)) do
+      {:error, :peer_unavailable} = error ->
+        case deadline - System.monotonic_time(:millisecond) do
+          remaining when remaining <= 0 ->
+            error
+
+          remaining ->
+            Process.sleep(min(@start_retry_interval, remaining))
+            start_until(target_spec, deadline)
+        end
+
+      result ->
+        result
     end
   end
 
